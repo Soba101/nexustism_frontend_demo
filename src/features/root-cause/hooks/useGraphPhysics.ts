@@ -1,0 +1,133 @@
+import { useRef, useCallback, Dispatch, SetStateAction } from 'react';
+import type { GraphNode, GraphCluster, GraphEdge } from '@/types';
+
+interface UseGraphPhysicsParams {
+  clusters: GraphCluster[];
+  edges: GraphEdge[];
+  draggedNodeId: string | null;
+  setNodes: Dispatch<SetStateAction<GraphNode[]>>;
+}
+
+interface UseGraphPhysicsReturn {
+  nodesRef: React.MutableRefObject<GraphNode[]>;
+  animationRef: React.MutableRefObject<number | undefined>;
+  startSimulation: () => void;
+  stopSimulation: () => void;
+}
+
+export const useGraphPhysics = ({
+  clusters,
+  edges,
+  draggedNodeId,
+  setNodes
+}: UseGraphPhysicsParams): UseGraphPhysicsReturn => {
+  const nodesRef = useRef<GraphNode[]>([]);
+  const animationRef = useRef<number | undefined>(undefined);
+
+  // Store setNodes in a ref to avoid dependency issues
+  const setNodesRef = useRef(setNodes);
+  setNodesRef.current = setNodes;
+
+  // Store current props in refs to avoid recreating tick function
+  const clustersRef = useRef(clusters);
+  clustersRef.current = clusters;
+
+  const edgesRef = useRef(edges);
+  edgesRef.current = edges;
+
+  const draggedNodeIdRef = useRef(draggedNodeId);
+  draggedNodeIdRef.current = draggedNodeId;
+
+  const stopSimulation = useCallback(() => {
+    if (animationRef.current !== undefined) {
+      cancelAnimationFrame(animationRef.current);
+    }
+    animationRef.current = undefined;
+  }, []);
+
+  const startSimulation = useCallback(() => {
+    if (animationRef.current !== undefined) return; // Already running
+
+    let frameCount = 0;
+    const RENDER_EVERY_N_FRAMES = 3; // Batch updates: only re-render every 3rd frame
+
+    const tick = () => {
+      const currentNodes = nodesRef.current;
+      const currentClusters = clustersRef.current;
+      const currentEdges = edgesRef.current;
+      const currentDraggedNodeId = draggedNodeIdRef.current;
+
+      // Apply forces
+      currentNodes.forEach(node => {
+        if (node.id === currentDraggedNodeId) return; // Don't move dragged node
+
+        let fx = 0;
+        let fy = 0;
+
+        // A. Cluster Gravity (Pull towards assigned cluster center)
+        const cluster = currentClusters.find(c => c.id === node.parent);
+        if (cluster && cluster.x && cluster.y) {
+          const dx = cluster.x - (node.x || 0);
+          const dy = cluster.y - (node.y || 0);
+          fx += dx * 0.15;
+          fy += dy * 0.15;
+        }
+
+        // B. Repulsion (Push away from other nodes to prevent overlap)
+        currentNodes.forEach(other => {
+          if (node.id === other.id) return;
+          const dx = (node.x || 0) - (other.x || 0);
+          const dy = (node.y || 0) - (other.y || 0);
+          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+          const force = 10000 / (distance * distance);
+          fx += (dx / distance) * force;
+          fy += (dy / distance) * force;
+        });
+
+        // C. Link Attraction (Pull connected nodes together)
+        currentEdges.forEach(edge => {
+          let otherId = null;
+          if (edge.source === node.id) otherId = edge.target;
+          if (edge.target === node.id) otherId = edge.source;
+
+          if (otherId) {
+            const other = currentNodes.find(n => n.id === otherId);
+            if (other) {
+              const dx = (other.x || 0) - (node.x || 0);
+              const dy = (other.y || 0) - (node.y || 0);
+              const strength = edge.confidence * 0.02;
+              fx += dx * strength;
+              fy += dy * strength;
+            }
+          }
+        });
+
+        // Apply Velocity
+        node.vx = ((node.vx || 0) + fx) * 0.5; // High friction (0.5) to settle quickly
+        node.vy = ((node.vy || 0) + fy) * 0.5;
+
+        // Update Position
+        node.x = (node.x || 0) + node.vx;
+        node.y = (node.y || 0) + node.vy;
+      });
+
+      // Batched re-render: only trigger React update every Nth frame
+      frameCount++;
+      if (frameCount % RENDER_EVERY_N_FRAMES === 0) {
+        setNodesRef.current([...currentNodes]);
+      }
+
+      // Continue animation
+      animationRef.current = requestAnimationFrame(tick);
+    };
+
+    animationRef.current = requestAnimationFrame(tick);
+  }, []); // Empty deps - function is stable, uses refs for current values
+
+  return {
+    nodesRef,
+    animationRef,
+    startSimulation,
+    stopSimulation
+  };
+};
