@@ -37,6 +37,27 @@ export interface User {
   avatar: string;
 }
 
+/** User preferences stored in localStorage */
+export interface UserPreferences {
+  theme: 'light' | 'dark';
+  language: string;
+  timezone: string;
+  dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
+  defaultPage: 'search' | 'analyze' | 'dashboard' | 'settings';
+  itemsPerPage: 5 | 10 | 25 | 50;
+  notifications: {
+    showToasts: boolean;
+    emailAlerts: boolean;
+    desktopNotifications: boolean;
+  };
+  accessibility: {
+    fontSize: number;
+    reduceMotion: boolean;
+    highContrast: boolean;
+  };
+  uiDensity: 'comfortable' | 'compact';
+}
+
 /**
  * Visual cluster grouping for causal graph nodes
  * @property x, y - Center coordinates for force-directed layout
