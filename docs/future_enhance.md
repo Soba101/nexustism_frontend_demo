@@ -9,6 +9,7 @@
 ## ✅ Phase 1 Complete - Root Cause Analysis Modernization (January 2026)
 
 **Completed Improvements:**
+
 - ✅ Removed cluster constraint system - nodes move freely
 - ✅ Interaction mode toggle - Select vs Pan modes with Control key override
 - ✅ Physics batching optimization - 66% reduction in React reconciliation
@@ -70,6 +71,7 @@ src/
 ### 1.2 Recent Accomplishments
 
 **Previous Phases (1-6, Completed):**
+
 - ✅ Extracted utility wrappers (Badge, Button, Progress, Toast, Modal)
 - ✅ Modularized TicketDetailPanel with 4 sub-tabs  
 - ✅ Extracted RootCauseAnalysisPage with custom physics engine
@@ -78,6 +80,7 @@ src/
 - ✅ Fixed infinite loop bug in physics simulation
 
 **Phase 7: UX & Performance (January 2026):**
+
 - ✅ Removed cluster system entirely - simplified force-directed physics
 - ✅ Implemented interaction redesign - Select/Pan modes with Control key override
 - ✅ Optimized physics with batching - 3-frame updates for 66% render reduction
@@ -107,12 +110,14 @@ The Root Cause Analysis feature is split across 6 main files:
 
 **Purpose:** Orchestrate graph visualization, interaction modes, and detail panel  
 **Responsibilities:**
+
 - State management (nodes, selectedNode, zoom, pan, interactionMode)
 - Lifecycle management (initialization, physics simulation)
 - Interaction handlers (keyboard, mouse, zoom controls)
 - Integration with physics hook and UI components
 
 **Key State:**
+
 ```typescript
 const [nodes, setNodes] = useState<GraphNode[]>([]);
 const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -123,6 +128,7 @@ const [isCtrlPressed, setIsCtrlPressed] = useState(false);
 ```
 
 **Interaction Modes:**
+
 - **Select Mode** (default): Click nodes to select, keyboard navigation  
 - **Pan Mode**: Drag canvas to pan
 - **Control Override**: Hold Control to temporarily switch modes
