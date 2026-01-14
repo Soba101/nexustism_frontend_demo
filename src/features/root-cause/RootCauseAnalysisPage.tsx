@@ -28,6 +28,8 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
   const [minConfidence, setMinConfidence] = useState(0);
   const [interactionMode, setInteractionMode] = useState<'select' | 'pan'>('select');
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<{ source: string; target: string } | null>(null);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -53,10 +55,22 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
     return () => window.removeEventListener('resize', updateDimensions);
   }, []);
 
-  // Handle Control key for pan override
+  // Handle Control key for pan override + keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Control') setIsCtrlPressed(true);
+      
+      // Keyboard navigation for selected node
+      if (selectedNode) {
+        if (e.key === 'Escape') setSelectedNode(null);
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          const currentIndex = nodes.findIndex(n => n.id === selectedNode.id);
+          const nextIndex = e.key === 'ArrowRight' 
+            ? (currentIndex + 1) % nodes.length
+            : (currentIndex - 1 + nodes.length) % nodes.length;
+          setSelectedNode(nodes[nextIndex]);
+        }
+      }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'Control') setIsCtrlPressed(false);
@@ -68,6 +82,23 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
+  }, [selectedNode, nodes]);
+
+  // Handle mouse wheel zoom
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      if (containerRef.current && containerRef.current.contains(e.target as Node)) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.05 : 0.05;
+        setZoom(prev => Math.max(0.5, Math.min(2, prev + delta)));
+      }
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('wheel', handleWheel, { passive: false });
+      return () => container.removeEventListener('wheel', handleWheel);
+    }
   }, []);
 
   // Initialize nodes (only once or when dimensions change)
@@ -163,10 +194,39 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
     startSimulation();
   };
 
-  const handleDownloadGraph = () => {
+  const handleDownloadGraph = (format: 'svg' | 'png' = 'svg') => {
     if (!svgRef.current) return;
-    downloadSVG(svgRef.current, 'causal_graph.svg');
-    addToast('Graph image downloaded', 'success');
+    
+    if (format === 'svg') {
+      downloadSVG(svgRef.current, 'causal_graph.svg');
+      addToast('SVG graph downloaded', 'success');
+    } else {
+      // PNG export using canvas
+      const svgData = new XMLSerializer().serializeToString(svgRef.current);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      canvas.width = dimensions.width;
+      canvas.height = dimensions.height;
+      
+      img.onload = () => {
+        ctx?.drawImage(img, 0, 0);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'causal_graph.png';
+            a.click();
+            URL.revokeObjectURL(url);
+            addToast('PNG graph downloaded', 'success');
+          }
+        });
+      };
+      
+      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    }
   };
 
   // Validation handlers
@@ -191,6 +251,7 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
         interactionMode={interactionMode}
         onModeChange={setInteractionMode}
         isCtrlPressed={isCtrlPressed}
+        zoom={zoom}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
         onReset={handleReset}
@@ -210,9 +271,14 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
           minConfidence={minConfidence}
           selectedNodeId={selectedNode?.id || null}
           draggedNodeId={draggedNodeId}
+          hoveredNodeId={hoveredNodeId}
+          selectedEdge={selectedEdge}
           svgRef={svgRef}
           onCanvasMouseDown={handleCanvasMouseDown}
           onNodeMouseDown={handleMouseDown}
+          onNodeMouseEnter={setHoveredNodeId}
+          onNodeMouseLeave={() => setHoveredNodeId(null)}
+          onEdgeClick={setSelectedEdge}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
         />

@@ -14,9 +14,14 @@ interface GraphCanvasProps {
   minConfidence: number;
   selectedNodeId: string | null;
   draggedNodeId: string | null;
+  hoveredNodeId: string | null;
+  selectedEdge: { source: string; target: string } | null;
   svgRef: React.RefObject<SVGSVGElement | null>;
   onCanvasMouseDown: (e: React.MouseEvent) => void;
   onNodeMouseDown: (e: React.MouseEvent, nodeId: string) => void;
+  onNodeMouseEnter: (nodeId: string) => void;
+  onNodeMouseLeave: () => void;
+  onEdgeClick: (edge: { source: string; target: string } | null) => void;
   onMouseMove: (e: React.MouseEvent) => void;
   onMouseUp: () => void;
 }
@@ -33,9 +38,14 @@ export const GraphCanvas = ({
   minConfidence,
   selectedNodeId,
   draggedNodeId,
+  hoveredNodeId,
+  selectedEdge,
   svgRef,
   onCanvasMouseDown,
   onNodeMouseDown,
+  onNodeMouseEnter,
+  onNodeMouseLeave,
+  onEdgeClick,
   onMouseMove,
   onMouseUp
 }: GraphCanvasProps) => {
@@ -98,35 +108,59 @@ export const GraphCanvas = ({
           const targetNode = nodes.find(n => n.id === edge.target);
           if (!sourceNode || !targetNode || sourceNode.x === undefined || targetNode.x === undefined) return null;
 
+          const isSelected = selectedEdge?.source === edge.source && selectedEdge?.target === edge.target;
+          const isHighlighted = hoveredNodeId === edge.source || hoveredNodeId === edge.target;
+
           return (
-            <g key={i}>
+            <g 
+              key={i}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdgeClick(isSelected ? null : { source: edge.source, target: edge.target });
+              }}
+              className="cursor-pointer"
+              style={{ opacity: isHighlighted || isSelected ? 1 : 0.8 }}
+            >
               <line
                 x1={sourceNode.x}
                 y1={sourceNode.y}
                 x2={targetNode.x}
                 y2={targetNode.y}
-                stroke={edge.confidence > 0.8 ? '#ef4444' : '#64748b'}
-                strokeWidth={2}
+                stroke={isSelected ? '#3b82f6' : edge.confidence > 0.8 ? '#ef4444' : edge.confidence > 0.5 ? '#f97316' : '#64748b'}
+                strokeWidth={isSelected || isHighlighted ? 3 : 2}
                 strokeDasharray={edge.confidence < 0.8 ? '5,5' : '0'}
                 markerEnd={edge.confidence > 0.8 ? 'url(#arrowhead-critical)' : 'url(#arrowhead)'}
-                opacity="0.8"
               />
               {/* Edge Label Background for readability */}
               <rect
-                x={(sourceNode.x! + targetNode.x!) / 2 - 20}
-                y={(sourceNode.y! + targetNode.y!) / 2 - 8}
-                width="40" height="16" rx="4" fill="#0f172a" opacity="0.8"
+                x={(sourceNode.x! + targetNode.x!) / 2 - 25}
+                y={(sourceNode.y! + targetNode.y!) / 2 - 10}
+                width="50" height="20" rx="4" 
+                fill={isSelected ? '#1e40af' : '#0f172a'} 
+                opacity={isSelected ? 0.95 : 0.8}
               />
               <text
                 x={(sourceNode.x! + targetNode.x!) / 2}
                 y={(sourceNode.y! + targetNode.y!) / 2 + 4}
-                fill="#94a3b8"
-                fontSize="10"
+                fill={isSelected ? '#fff' : '#94a3b8'}
+                fontSize="11"
                 textAnchor="middle"
-                className="select-none"
+                className="select-none font-medium"
               >
                 {Math.round(edge.confidence * 100)}%
               </text>
+              {isSelected && (
+                <text
+                  x={(sourceNode.x! + targetNode.x!) / 2}
+                  y={(sourceNode.y! + targetNode.y!) / 2 - 18}
+                  fill="#3b82f6"
+                  fontSize="9"
+                  textAnchor="middle"
+                  className="select-none font-semibold"
+                >
+                  {edge.label || 'Related'}
+                </text>
+              )}
             </g>
           );
         })}
@@ -134,50 +168,108 @@ export const GraphCanvas = ({
         {/* Nodes */}
         {nodes.map((node) => {
           const isHighlighted = matchesSearch(node);
+          const isHovered = hoveredNodeId === node.id;
+          const isSelected = selectedNodeId === node.id;
           const opacity = searchQuery && !isHighlighted ? 0.2 : 1;
+
+          // Node details from mock data
+          const nodeDetails = node.details || node.label;
 
           return (
           <g
             key={node.id}
             transform={`translate(${node.x || 0},${node.y || 0})`}
             onMouseDown={(e) => onNodeMouseDown(e, node.id)}
-            className="cursor-pointer hover:opacity-90"
+            onMouseEnter={() => onNodeMouseEnter(node.id)}
+            onMouseLeave={onNodeMouseLeave}
+            className="cursor-pointer transition-all"
             style={{ transition: draggedNodeId === node.id ? 'none' : 'transform 0.1s linear', opacity }}
           >
             {/* Search highlight glow */}
             {searchQuery && isHighlighted && (
-              <circle r={36} fill="none" stroke="#fbbf24" strokeWidth="3" strokeOpacity="0.7" className="animate-pulse" />
+              <circle r={42} fill="none" stroke="#fbbf24" strokeWidth="3" strokeOpacity="0.7" className="animate-pulse" />
             )}
-            {/* Outer glow for selected */}
-            {selectedNodeId === node.id && (
-              <circle r={32} fill="none" stroke="#3b82f6" strokeWidth="2" strokeOpacity="0.5" className="animate-pulse" />
+            {/* Outer glow for selected/hovered */}
+            {(isSelected || isHovered) && (
+              <circle r={36} fill="none" stroke={isSelected ? '#3b82f6' : '#6366f1'} strokeWidth="2" strokeOpacity="0.6" className="animate-pulse" />
             )}
+            
+            {/* Circle Node */}
             <circle
-              r={node.type === 'root' ? 28 : 22}
-              fill={node.type === 'root' ? '#2563eb' : '#1e293b'}
-              stroke={selectedNodeId === node.id ? '#fff' : '#475569'}
-              strokeWidth="2"
+              r={node.type === 'root' ? 30 : 24}
+              fill={node.type === 'root' ? '#2563eb' : node.type === 'cause' ? '#dc2626' : node.type === 'change' ? '#f59e0b' : node.type === 'problem' ? '#ef4444' : '#1e293b'}
+              stroke={isSelected ? '#fff' : isHovered ? '#94a3b8' : '#475569'}
+              strokeWidth={isSelected ? 3 : 2}
+              className="drop-shadow-lg"
             />
 
-            {/* Text Label - Offset to avoid covering node */}
+            {/* Node Icon */}
+            <g transform="translate(-8, -8)">
+              {node.type === 'root' && <Activity width="16" height="16" color="white" />}
+              {node.type === 'cause' && <AlertCircle width="16" height="16" color="#fca5a5" />}
+              {node.type === 'change' && <GitCommit width="16" height="16" color="#fef3c7" />}
+              {node.type === 'problem' && <AlertTriangle width="16" height="16" color="#fca5a5" />}
+              {node.type === 'related' && <Network width="16" height="16" color="#cbd5e1" />}
+            </g>
+
+            {/* Ticket Number Label */}
             <text
-              y={node.type === 'root' ? 45 : 40}
-              fill="#cbd5e1"
+              y={node.type === 'root' ? 48 : 42}
+              fill="#e2e8f0"
               fontSize="11"
               textAnchor="middle"
-              fontWeight="500"
+              fontWeight="600"
               className="select-none pointer-events-none"
-              style={{ textShadow: '0px 1px 3px rgba(0,0,0,0.8)' }}
+              style={{ textShadow: '0px 1px 3px rgba(0,0,0,0.9)' }}
             >
               {node.label}
             </text>
 
-            {/* Icons inside nodes */}
-            {node.type === 'root' && <Activity x="-12" y="-12" color="white" />}
-            {node.type === 'cause' && <AlertCircle x="-10" y="-10" width="20" height="20" color="#fca5a5" />}
-            {node.type === 'change' && <GitCommit x="-10" y="-10" width="20" height="20" color="#fbbf24" />}
-            {node.type === 'problem' && <AlertTriangle x="-10" y="-10" width="20" height="20" color="#f87171" />}
-            {node.type === 'related' && <Network x="-10" y="-10" width="20" height="20" color="#94a3b8" />}
+            {/* Hover Tooltip */}
+            {isHovered && (
+              <g transform="translate(0, -65)">
+                <rect
+                  x="-90"
+                  y="-28"
+                  width="180"
+                  height="50"
+                  rx="6"
+                  fill="#0f172a"
+                  stroke="#3b82f6"
+                  strokeWidth="1.5"
+                  opacity="0.98"
+                  className="drop-shadow-2xl"
+                />
+                <text
+                  y="-14"
+                  fill="#3b82f6"
+                  fontSize="11"
+                  textAnchor="middle"
+                  fontWeight="700"
+                  className="select-none"
+                >
+                  {node.label}
+                </text>
+                <text
+                  y="0"
+                  fill="#cbd5e1"
+                  fontSize="9"
+                  textAnchor="middle"
+                  className="select-none"
+                >
+                  {nodeDetails.length > 32 ? nodeDetails.substring(0, 32) + '...' : nodeDetails}
+                </text>
+                <text
+                  y="14"
+                  fill="#94a3b8"
+                  fontSize="8"
+                  textAnchor="middle"
+                  className="select-none"
+                >
+                  Type: {node.type.charAt(0).toUpperCase() + node.type.slice(1)} • Click for details
+                </text>
+              </g>
+            )}
           </g>
         );})}
       </g>

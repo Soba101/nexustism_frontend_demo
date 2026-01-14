@@ -64,7 +64,7 @@ export const useGraphPhysics = ({
           const dx = (node.x || 0) - (other.x || 0);
           const dy = (node.y || 0) - (other.y || 0);
           const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = 10000 / (distance * distance);
+          const force = 28000 / (distance * distance);
           fx += (dx / distance) * force;
           fy += (dy / distance) * force;
         });

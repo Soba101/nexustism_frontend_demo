@@ -107,6 +107,18 @@ export const GRAPH_NODES: GraphNode[] = [
   { id: '8', label: 'CHG000451', type: 'change', details: 'Change Request: Firewall Rule Update' },
   { id: '4', label: 'TKT000821', type: 'related', details: 'Similar Issue: Cert Failure (Medium Confidence)' },
   { id: '9', label: 'PRB000120', type: 'problem', details: 'Problem Investigation: ISP Stability' },
+  // Additional nodes for stress testing (uncomment for larger graph)
+  // { id: '10', label: 'TKT001053', type: 'cause', details: 'DNS Resolution Timeout' },
+  // { id: '11', label: 'TKT001054', type: 'related', details: 'Network Slowness Report' },
+  // { id: '12', label: 'CHG000452', type: 'change', details: 'Load Balancer Configuration' },
+  // { id: '13', label: 'TKT001055', type: 'cause', details: 'Authentication Service Down' },
+  // { id: '14', label: 'PRB000121', type: 'problem', details: 'Recurring VPN Issues' },
+  // { id: '15', label: 'TKT001056', type: 'related', details: 'Email Access Problems' },
+  // { id: '16', label: 'TKT001057', type: 'cause', details: 'Database Connection Pool Exhausted' },
+  // { id: '17', label: 'CHG000453', type: 'change', details: 'SSL Certificate Renewal' },
+  // { id: '18', label: 'TKT001058', type: 'related', details: 'Mobile App Login Failure' },
+  // { id: '19', label: 'TKT001059', type: 'cause', details: 'Proxy Server Misconfiguration' },
+  // { id: '20', label: 'PRB000122', type: 'problem', details: 'Authentication Infrastructure Review' },
 ];
 
 export const GRAPH_EDGES: GraphEdge[] = [
@@ -114,4 +126,16 @@ export const GRAPH_EDGES: GraphEdge[] = [
   { source: '3', target: '1', confidence: 0.95, label: 'Recurrence' },
   { source: '4', target: '1', confidence: 0.60, label: 'Similar' },
   { source: '1', target: '9', confidence: 0.85, label: 'Escalated To' },
+  // Additional edges for stress testing (uncomment with nodes above)
+  // { source: '10', target: '1', confidence: 0.75, label: 'Related' },
+  // { source: '11', target: '3', confidence: 0.65, label: 'Similar' },
+  // { source: '12', target: '10', confidence: 0.82, label: 'Caused' },
+  // { source: '13', target: '1', confidence: 0.88, label: 'Root Cause' },
+  // { source: '14', target: '1', confidence: 0.70, label: 'Investigation' },
+  // { source: '15', target: '13', confidence: 0.55, label: 'Related' },
+  // { source: '16', target: '13', confidence: 0.78, label: 'Caused' },
+  // { source: '17', target: '4', confidence: 0.92, label: 'Resolved' },
+  // { source: '18', target: '13', confidence: 0.68, label: 'Similar' },
+  // { source: '19', target: '3', confidence: 0.85, label: 'Caused' },
+  // { source: '20', target: '13', confidence: 0.80, label: 'Escalated To' },
 ];
