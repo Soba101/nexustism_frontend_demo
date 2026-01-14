@@ -13,8 +13,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nexustism",
+  title: "ITSM Nexus - AI-Powered Ticket Management",
   description: "AI-Powered Incident Management for Modern DevOps Teams",
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({

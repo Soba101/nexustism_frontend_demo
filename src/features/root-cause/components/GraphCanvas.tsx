@@ -1,14 +1,15 @@
 import { Activity, AlertCircle, GitCommit, AlertTriangle, Network, Shield } from 'lucide-react';
-import type { GraphNode, GraphCluster, GraphEdge } from '@/types';
+import type { GraphNode, GraphEdge } from '@/types';
 import { GRAPH_EDGES } from '@/data/mockTickets';
 
 interface GraphCanvasProps {
   nodes: GraphNode[];
-  clusters: GraphCluster[];
   zoom: number;
   pan: { x: number; y: number };
   dimensions: { width: number; height: number };
   isPanning: boolean;
+  interactionMode: 'select' | 'pan';
+  isCtrlPressed: boolean;
   searchQuery: string;
   minConfidence: number;
   selectedNodeId: string | null;
@@ -22,11 +23,12 @@ interface GraphCanvasProps {
 
 export const GraphCanvas = ({
   nodes,
-  clusters,
   zoom,
   pan,
   dimensions,
   isPanning,
+  interactionMode,
+  isCtrlPressed,
   searchQuery,
   minConfidence,
   selectedNodeId,
@@ -50,18 +52,26 @@ export const GraphCanvas = ({
   // Filter edges by confidence threshold
   const filteredEdges = GRAPH_EDGES.filter(edge => edge.confidence >= minConfidence / 100);
 
+  // Determine cursor based on mode and state
+  const getCursorClass = () => {
+    if (isPanning) return 'cursor-grabbing';
+    if (draggedNodeId) return 'cursor-grabbing';
+    
+    const effectiveMode = isCtrlPressed ? 'pan' : interactionMode;
+    if (effectiveMode === 'pan') return 'cursor-grab';
+    return 'cursor-default';
+  };
+
   return (
   <div
-    className={`relative flex-1 overflow-hidden h-full ${
-      isPanning ? 'cursor-grabbing' : draggedNodeId ? 'cursor-grabbing' : 'cursor-grab'
-    }`}
+    className={`relative flex-1 overflow-hidden h-full ${getCursorClass()}`}
     onMouseDown={onCanvasMouseDown}
     onMouseMove={onMouseMove}
     onMouseUp={onMouseUp}
     onMouseLeave={onMouseUp}
   >
     <div
-      className="absolute inset-0 opacity-20"
+      className="absolute inset-0 opacity-20 pointer-events-none"
       style={{ backgroundImage: 'radial-gradient(#64748b 1px, transparent 1px)', backgroundSize: '30px 30px' }}
     />
 
@@ -81,34 +91,6 @@ export const GraphCanvas = ({
       </defs>
 
       <g transform={`translate(${pan.x / zoom}, ${pan.y / zoom}) scale(${zoom})`} style={{ transformOrigin: `${dimensions.width/2}px ${dimensions.height/2}px`, transition: draggedNodeId || isPanning ? 'none' : 'transform 0.1s linear' }}>
-
-        {/* Clusters (Background Layer) */}
-        {clusters.map(c => (
-          <g key={c.id}>
-            <rect
-              x={(c.x || 0) - (c.width || 0)/2}
-              y={(c.y || 0) - (c.height || 0)/2}
-              width={c.width}
-              height={c.height}
-              rx="16"
-              fill={c.color}
-              fillOpacity="0.05"
-              stroke={c.color}
-              strokeOpacity="0.3"
-              strokeDasharray="4 4"
-            />
-            <text
-              x={(c.x || 0) - (c.width || 0)/2 + 10}
-              y={(c.y || 0) - (c.height || 0)/2 + 25}
-              fill={c.color}
-              fontSize="12"
-              fontWeight="bold"
-              style={{ textTransform: 'uppercase', letterSpacing: '1px' }}
-            >
-              {c.label}
-            </text>
-          </g>
-        ))}
 
         {/* Edges */}
         {nodes.length > 0 && filteredEdges.map((edge, i) => {
@@ -206,7 +188,7 @@ export const GraphCanvas = ({
       <div className="absolute top-4 right-4 bg-slate-800/90 backdrop-blur border border-slate-700 p-4 rounded-lg w-64 text-left pointer-events-none hidden sm:block">
         <h3 className="text-white font-medium text-sm mb-2 flex items-center"><Shield className="w-4 h-4 mr-2 text-green-400"/> Analysis Mode</h3>
         <p className="text-slate-400 text-xs leading-relaxed">
-          Click nodes to see details. Drag canvas to pan or drag nodes to rearrange.
+          Click nodes to view details. Toggle mode or hold <kbd className="px-1 py-0.5 bg-slate-700 rounded text-xs">Ctrl</kbd> to pan canvas.
         </p>
       </div>
     )}

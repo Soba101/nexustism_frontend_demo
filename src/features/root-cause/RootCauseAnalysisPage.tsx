@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import type { GraphNode, GraphCluster } from '@/types';
-import { GRAPH_CLUSTERS, GRAPH_NODES as RAW_NODES, GRAPH_EDGES } from '@/data/mockTickets';
-import { initializeClusters, initializeNodes, downloadSVG } from './utils/graphHelpers';
+import type { GraphNode } from '@/types';
+import { GRAPH_NODES as RAW_NODES, GRAPH_EDGES } from '@/data/mockTickets';
+import { initializeNodes, downloadSVG } from './utils/graphHelpers';
 import { useGraphPhysics } from './hooks/useGraphPhysics';
 import { GraphControls } from './components/GraphControls';
 import { GraphCanvas } from './components/GraphCanvas';
@@ -16,7 +16,6 @@ interface RootCauseAnalysisPageProps {
 
 export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnalysisPageProps) => {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
-  const [clusters, setClusters] = useState<GraphCluster[]>([]);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -27,13 +26,14 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
   const [validation, setValidation] = useState({ rating: 0, confidence: 50, evidence: '' });
   const [searchQuery, setSearchQuery] = useState('');
   const [minConfidence, setMinConfidence] = useState(0);
+  const [interactionMode, setInteractionMode] = useState<'select' | 'pan'>('select');
+  const [isCtrlPressed, setIsCtrlPressed] = useState(false);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Initialize physics hook
   const { nodesRef, startSimulation, stopSimulation } = useGraphPhysics({
-    clusters,
     edges: GRAPH_EDGES,
     draggedNodeId,
     setNodes
@@ -53,14 +53,28 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
     return () => window.removeEventListener('resize', updateDimensions);
   }, []);
 
-  // Initialize clusters & nodes (only once)
+  // Handle Control key for pan override
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Control') setIsCtrlPressed(true);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Control') setIsCtrlPressed(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // Initialize nodes (only once or when dimensions change)
   useEffect(() => {
     const { width, height } = dimensions;
 
-    const computedClusters = initializeClusters(GRAPH_CLUSTERS, width, height);
-    setClusters(computedClusters);
-
-    const initialNodes = initializeNodes(RAW_NODES, computedClusters);
+    const initialNodes = initializeNodes(RAW_NODES, width, height);
     nodesRef.current = initialNodes;
     setNodes(initialNodes);
 
@@ -72,7 +86,10 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
 
   // Canvas panning handlers
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    if (draggedNodeId) return; // Don't pan while dragging a node
+    // Allow panning if: in pan mode OR holding Control key
+    const shouldPan = interactionMode === 'pan' || isCtrlPressed;
+    if (!shouldPan || draggedNodeId) return;
+    
     setIsPanning(true);
     setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
   };
@@ -81,12 +98,16 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
   const handleMouseDown = (e: React.MouseEvent, nodeId: string) => {
     e.stopPropagation();
     e.preventDefault();
-    setDraggedNodeId(nodeId);
 
-    const node = nodesRef.current.find(n => n.id === nodeId);
-    if (node) setSelectedNode(node);
-
-    startSimulation();
+    // In select mode or when Ctrl is NOT pressed, allow node interaction
+    const canInteractWithNode = interactionMode === 'select' && !isCtrlPressed;
+    
+    if (canInteractWithNode) {
+      setDraggedNodeId(nodeId);
+      const node = nodesRef.current.find(n => n.id === nodeId);
+      if (node) setSelectedNode(node);
+      startSimulation();
+    }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -167,6 +188,9 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
         onSearchChange={setSearchQuery}
         minConfidence={minConfidence}
         onMinConfidenceChange={setMinConfidence}
+        interactionMode={interactionMode}
+        onModeChange={setInteractionMode}
+        isCtrlPressed={isCtrlPressed}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
         onReset={handleReset}
@@ -176,11 +200,12 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
       <div ref={containerRef} className="flex-1 bg-slate-900 rounded-xl overflow-hidden shadow-2xl relative border border-slate-800 flex flex-col lg:flex-row min-h-[400px]">
         <GraphCanvas
           nodes={nodes}
-          clusters={clusters}
           zoom={zoom}
           pan={pan}
           dimensions={dimensions}
           isPanning={isPanning}
+          interactionMode={interactionMode}
+          isCtrlPressed={isCtrlPressed}
           searchQuery={searchQuery}
           minConfidence={minConfidence}
           selectedNodeId={selectedNode?.id || null}

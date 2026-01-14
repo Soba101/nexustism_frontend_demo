@@ -1,4 +1,4 @@
-import { MousePointer2, ImageIcon, Move, ZoomOut, ZoomIn, Search, SlidersHorizontal } from 'lucide-react';
+import { MousePointer2, ImageIcon, Move, ZoomOut, ZoomIn, Search, SlidersHorizontal, Hand, Pointer } from 'lucide-react';
 import { Button } from '@/components/ui/wrappers';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
@@ -8,6 +8,9 @@ interface GraphControlsProps {
   onSearchChange: (query: string) => void;
   minConfidence: number;
   onMinConfidenceChange: (value: number) => void;
+  interactionMode: 'select' | 'pan';
+  onModeChange: (mode: 'select' | 'pan') => void;
+  isCtrlPressed: boolean;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onReset: () => void;
@@ -19,12 +22,17 @@ export const GraphControls = ({
   onSearchChange, 
   minConfidence, 
   onMinConfidenceChange,
+  interactionMode,
+  onModeChange,
+  isCtrlPressed,
   onZoomIn, 
   onZoomOut, 
   onReset, 
   onDownload 
 }: GraphControlsProps) => {
   const [showFilters, setShowFilters] = useState(false);
+
+  const effectiveMode = isCtrlPressed ? 'pan' : interactionMode;
 
   return (
     <div className="mb-6 space-y-4">
@@ -34,9 +42,36 @@ export const GraphControls = ({
           <p className="text-slate-500 dark:text-slate-400 text-sm">Root cause detection and relationship mapping.</p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
-          <div className="flex items-center gap-2 text-sm text-slate-500 bg-white dark:bg-slate-800 px-3 py-1 rounded border border-slate-200 dark:border-slate-700">
-            <MousePointer2 className="w-4 h-4"/> Drag to pan or move nodes
+          {/* Mode Toggle */}
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-1">
+            <Button 
+              variant={interactionMode === 'select' ? 'primary' : 'ghost'} 
+              size="sm" 
+              onClick={() => onModeChange('select')}
+              className="px-3 py-1 h-8"
+            >
+              <Pointer className="w-4 h-4 mr-1" />
+              Select
+            </Button>
+            <Button 
+              variant={interactionMode === 'pan' ? 'primary' : 'ghost'} 
+              size="sm" 
+              onClick={() => onModeChange('pan')}
+              className="px-3 py-1 h-8"
+            >
+              <Hand className="w-4 h-4 mr-1" />
+              Pan
+            </Button>
           </div>
+          
+          {/* Ctrl indicator */}
+          {isCtrlPressed && (
+            <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-2 py-1 rounded border border-blue-200 dark:border-blue-800">
+              <Hand className="w-3 h-3" />
+              Pan Mode (Ctrl)
+            </div>
+          )}
+
           <Button variant="outline" size="sm" onClick={onDownload}>
             <ImageIcon className="w-4 h-4" />
             Export

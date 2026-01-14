@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { WebVitalsReporter } from '@/components/WebVitalsReporter';
 import { 
   Search, 
   Filter, 
@@ -55,8 +57,8 @@ import {
 } from 'lucide-react';
 
 // Import types and data from new modular structure
-import type { Ticket, User as UserType, GraphNode, GraphCluster, GraphEdge, TicketPriority, TicketState } from '@/types';
-import { MOCK_TICKETS, GRAPH_CLUSTERS, GRAPH_NODES as RAW_NODES, GRAPH_EDGES } from '@/data/mockTickets';
+import type { Ticket, User as UserType, GraphNode, GraphEdge, TicketPriority, TicketState } from '@/types';
+import { MOCK_TICKETS, GRAPH_NODES as RAW_NODES, GRAPH_EDGES } from '@/data/mockTickets';
 import { exportToCSV, getPriorityVariant } from '@/utils/helpers';
 import { AreaChart, SimpleLineChart, DonutChart } from '@/components/charts/Charts';
 import { branding } from '@/config/branding';
@@ -74,19 +76,27 @@ import { LoginPage } from '@/features/auth';
 import { Sidebar, PageWrapper, ToastContainer } from '@/components/layout';
 import { SettingsPage } from '@/features/settings';
 import { SearchPage } from '@/features/search';
-import { AnalyticsPage } from '@/features/analytics';
-
-// Import wrapper components
-import { Badge, Button, Progress, Modal, Card } from '@/components/ui/wrappers';
-
-// Import ticket components
 import { TicketDetailPanel } from '@/features/tickets';
+import { DashboardPage } from '@/features/dashboard';
 
-// Import root cause analysis
-import { RootCauseAnalysisPage } from '@/features/root-cause';
+// Lazy load heavy features
+const AnalyticsPage = lazy(() => import('@/features/analytics').then(mod => ({ default: mod.AnalyticsPage })));
+const RootCauseAnalysisPage = lazy(() => import('@/features/root-cause').then(mod => ({ default: mod.RootCauseAnalysisPage })));
 
 // Type alias for User
 type User = UserType;
+
+/**
+ * Loading Spinner Component
+ */
+const LoadingSpinner = () => (
+  <div className="flex items-center justify-center h-96">
+    <div className="relative w-16 h-16">
+      <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-slate-800"></div>
+      <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 dark:border-t-blue-400 animate-spin"></div>
+    </div>
+  </div>
+);
 
 /**
  * ==========================================
@@ -95,8 +105,8 @@ type User = UserType;
  */
 
 // 4. Root App Component
-export default function App() {
-  const [activePage, setActivePage] = useState('search');
+function App() {
+  const [activePage, setActivePage] = useState('home');
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -138,6 +148,14 @@ export default function App() {
           user={user}
         />
         
+        {activePage === 'home' && (
+          <DashboardPage
+            setActivePage={setActivePage}
+            onSelectIncident={setSelectedTicket}
+            addToast={addToast}
+          />
+        )}
+
         {activePage === 'search' && (
           <SearchPage
             onSelectIncident={setSelectedTicket}
@@ -148,13 +166,17 @@ export default function App() {
 
         {activePage === 'analyze' && (
           <PageWrapper setIsMobileOpen={setIsMobileOpen}>
-            <RootCauseAnalysisPage setActivePage={setActivePage} addToast={addToast} />
+            <Suspense fallback={<LoadingSpinner />}>
+              <RootCauseAnalysisPage setActivePage={setActivePage} addToast={addToast} />
+            </Suspense>
           </PageWrapper>
         )}
 
         {activePage === 'dashboard' && (
           <PageWrapper setIsMobileOpen={setIsMobileOpen}>
-            <AnalyticsPage addToast={addToast} />
+            <Suspense fallback={<LoadingSpinner />}>
+              <AnalyticsPage addToast={addToast} />
+            </Suspense>
           </PageWrapper>
         )}
 
@@ -182,5 +204,15 @@ export default function App() {
         />
       </div>
     </div>
+  );
+}
+
+// Wrap App with Error Boundary
+export default function AppWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <WebVitalsReporter />
+      <App />
+    </ErrorBoundary>
   );
 }

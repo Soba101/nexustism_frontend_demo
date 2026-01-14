@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Menu, ChevronRight, ChevronLeft, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +15,6 @@ interface SearchPageProps {
 export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: SearchPageProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [filteredIncidents, setFilteredIncidents] = useState(MOCK_TICKETS);
   const [isSearching, setIsSearching] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   
@@ -45,47 +44,46 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
     }
   }, [searchTerm]);
 
+  // Reset to page 1 when filters change
   useEffect(() => {
-    setIsSearching(true);
-    setCurrentPage(1); 
-    const timer = setTimeout(() => {
-      let results = MOCK_TICKETS;
+    setCurrentPage(1);
+  }, [searchTerm, selectedCategories, statusFilter, dateRange]);
+
+  const filteredIncidents = useMemo(() => {
+    let results = MOCK_TICKETS;
+    
+    // Text Search
+    if (searchTerm) {
+      results = results.filter(i => 
+        i.short_description.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        i.number.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    // Category Filter
+    if (selectedCategories.length > 0) {
+      results = results.filter(i => selectedCategories.includes(i.category));
+    }
+
+    // Status Filter
+    if (statusFilter !== 'all') {
+       results = results.filter(i => i.state.toLowerCase() === statusFilter);
+    }
+
+    // Date Range Filter
+    if (dateRange !== 'all') {
+      const now = new Date();
+      const days = dateRange === 'last 7 days' ? 7 : dateRange === 'last 30 days' ? 30 : 0;
       
-      // Text Search
-      if (searchTerm) {
-        results = results.filter(i => 
-          i.short_description.toLowerCase().includes(searchTerm.toLowerCase()) || 
-          i.number.toLowerCase().includes(searchTerm.toLowerCase())
-        );
+      if (days > 0) {
+         const cutoff = new Date();
+         cutoff.setDate(now.getDate() - days);
+         results = results.filter(i => new Date(i.opened_at) >= cutoff);
       }
-      
-      // Category Filter
-      if (selectedCategories.length > 0) {
-        results = results.filter(i => selectedCategories.includes(i.category));
-      }
+    }
 
-      // Status Filter
-      if (statusFilter !== 'all') {
-         results = results.filter(i => i.state.toLowerCase() === statusFilter);
-      }
-
-      // Date Range Filter
-      if (dateRange !== 'all') {
-        const now = new Date();
-        const days = dateRange === 'last 7 days' ? 7 : dateRange === 'last 30 days' ? 30 : 0;
-        
-        if (days > 0) {
-           const cutoff = new Date();
-           cutoff.setDate(now.getDate() - days);
-           results = results.filter(i => new Date(i.opened_at) >= cutoff);
-        }
-      }
-
-      setFilteredIncidents(results);
-      setIsSearching(false);
-    }, 400); 
-    return () => clearTimeout(timer);
-  }, [searchTerm, selectedCategories, statusFilter, dateRange, queryExpansion, reranking]);
+    return results;
+  }, [searchTerm, selectedCategories, statusFilter, dateRange]);
 
   const categories = ['Network', 'Software', 'Hardware', 'Database', 'Access'];
   
@@ -96,11 +94,18 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
   };
 
   // Pagination Logic
-  const totalPages = Math.ceil(filteredIncidents.length / itemsPerPage);
-  const paginatedIncidents = filteredIncidents.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  const totalPages = useMemo(() => Math.ceil(filteredIncidents.length / itemsPerPage), [filteredIncidents.length]);
+  
+  const paginatedIncidents = useMemo(() => 
+    filteredIncidents.slice(
+      (currentPage - 1) * itemsPerPage,
+      currentPage * itemsPerPage
+    ), [filteredIncidents, currentPage]);
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedCategories, statusFilter, dateRange]);
 
   return (
     <div className="flex-1 min-h-screen bg-slate-50 dark:bg-slate-950 md:pl-64 transition-all duration-300">

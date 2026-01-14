@@ -101,18 +101,12 @@ export const MOCK_TICKETS: Ticket[] = [
   }
 ];
 
-export const GRAPH_CLUSTERS: GraphCluster[] = [
-  { id: 'cluster_vpn', label: 'Network Layer', color: '#3b82f6' },
-  { id: 'cluster_change', label: 'Recent Changes', color: '#eab308' },
-  { id: 'cluster_external', label: 'External Factors', color: '#ef4444' }
-];
-
 export const GRAPH_NODES: GraphNode[] = [
-  { id: '1', label: 'TKT001052', type: 'root', parent: 'cluster_vpn', details: 'Root Ticket: VPN Connection Failure' },
-  { id: '3', label: 'TKT000985', type: 'cause', parent: 'cluster_vpn', details: 'Previous Ticket: Gateway Latency' },
-  { id: '8', label: 'CHG000451', type: 'change', parent: 'cluster_change', details: 'Change Request: Firewall Rule Update' },
-  { id: '4', label: 'TKT000821', type: 'related', parent: 'cluster_vpn', details: 'Similar Issue: Cert Failure (Medium Confidence)' },
-  { id: '9', label: 'PRB000120', type: 'problem', parent: 'cluster_external', details: 'Problem Investigation: ISP Stability' },
+  { id: '1', label: 'TKT001052', type: 'root', details: 'Root Ticket: VPN Connection Failure' },
+  { id: '3', label: 'TKT000985', type: 'cause', details: 'Previous Ticket: Gateway Latency' },
+  { id: '8', label: 'CHG000451', type: 'change', details: 'Change Request: Firewall Rule Update' },
+  { id: '4', label: 'TKT000821', type: 'related', details: 'Similar Issue: Cert Failure (Medium Confidence)' },
+  { id: '9', label: 'PRB000120', type: 'problem', details: 'Problem Investigation: ISP Stability' },
 ];
 
 export const GRAPH_EDGES: GraphEdge[] = [

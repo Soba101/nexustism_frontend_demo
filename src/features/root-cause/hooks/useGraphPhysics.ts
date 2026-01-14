@@ -1,8 +1,7 @@
 import { useRef, useCallback, Dispatch, SetStateAction } from 'react';
-import type { GraphNode, GraphCluster, GraphEdge } from '@/types';
+import type { GraphNode, GraphEdge } from '@/types';
 
 interface UseGraphPhysicsParams {
-  clusters: GraphCluster[];
   edges: GraphEdge[];
   draggedNodeId: string | null;
   setNodes: Dispatch<SetStateAction<GraphNode[]>>;
@@ -16,7 +15,6 @@ interface UseGraphPhysicsReturn {
 }
 
 export const useGraphPhysics = ({
-  clusters,
   edges,
   draggedNodeId,
   setNodes
@@ -29,9 +27,6 @@ export const useGraphPhysics = ({
   setNodesRef.current = setNodes;
 
   // Store current props in refs to avoid recreating tick function
-  const clustersRef = useRef(clusters);
-  clustersRef.current = clusters;
-
   const edgesRef = useRef(edges);
   edgesRef.current = edges;
 
@@ -53,7 +48,6 @@ export const useGraphPhysics = ({
 
     const tick = () => {
       const currentNodes = nodesRef.current;
-      const currentClusters = clustersRef.current;
       const currentEdges = edgesRef.current;
       const currentDraggedNodeId = draggedNodeIdRef.current;
 
@@ -64,16 +58,7 @@ export const useGraphPhysics = ({
         let fx = 0;
         let fy = 0;
 
-        // A. Cluster Gravity (Pull towards assigned cluster center)
-        const cluster = currentClusters.find(c => c.id === node.parent);
-        if (cluster && cluster.x && cluster.y) {
-          const dx = cluster.x - (node.x || 0);
-          const dy = cluster.y - (node.y || 0);
-          fx += dx * 0.15;
-          fy += dy * 0.15;
-        }
-
-        // B. Repulsion (Push away from other nodes to prevent overlap)
+        // A. Repulsion (Push away from other nodes to prevent overlap)
         currentNodes.forEach(other => {
           if (node.id === other.id) return;
           const dx = (node.x || 0) - (other.x || 0);
@@ -84,7 +69,7 @@ export const useGraphPhysics = ({
           fy += (dy / distance) * force;
         });
 
-        // C. Link Attraction (Pull connected nodes together)
+        // B. Link Attraction (Pull connected nodes together)
         currentEdges.forEach(edge => {
           let otherId = null;
           if (edge.source === node.id) otherId = edge.target;

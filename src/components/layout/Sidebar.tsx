@@ -13,9 +13,10 @@ interface SidebarProps {
 
 export const Sidebar = ({ activePage, setActivePage, isMobileOpen, setIsMobileOpen, user }: SidebarProps) => {
   const navItems = [
+    { id: 'home', icon: LayoutDashboard, label: 'Dashboard' },
     { id: 'search', icon: Search, label: 'Search Tickets' },
     { id: 'analyze', icon: Network, label: 'Root Cause Analysis' },
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Analytics' },
+    { id: 'dashboard', icon: Activity, label: 'Analytics' },
     { id: 'settings', icon: Settings, label: 'Settings' },
   ];
 

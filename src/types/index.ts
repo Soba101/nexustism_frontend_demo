@@ -55,7 +55,6 @@ export interface GraphCluster {
 /**
  * Graph node representing a ticket or problem record in causal analysis
  * @property type - Node category for visualization (root incident, cause, etc.)
- * @property parent - Cluster ID for grouping
  * @property x, y - Position coordinates for rendering
  * @property vx, vy - Velocity vectors for physics simulation
  */
@@ -64,7 +63,6 @@ export interface GraphNode {
   label: string;
   type: 'root' | 'cause' | 'change' | 'related' | 'problem';
   details: string;
-  parent?: string;
   x?: number;
   y?: number;
   vx?: number;

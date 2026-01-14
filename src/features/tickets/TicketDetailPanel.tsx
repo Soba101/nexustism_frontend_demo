@@ -39,12 +39,14 @@ export const TicketDetailPanel = ({
 
   return (
     <>
+      {/* Backdrop - positioned below header on mobile */}
       <div
-        className={`fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 md:inset-0 top-16 md:top-0 bg-slate-900/20 backdrop-blur-sm z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={onClose}
       />
 
-      <div className={`fixed top-0 right-0 h-full w-full md:w-[600px] lg:w-[700px] bg-white dark:bg-slate-900 shadow-2xl z-50 transform transition-transform duration-300 flex flex-col border-l border-slate-200 dark:border-slate-700 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+      {/* Panel - slides from right on desktop, bottom on mobile */}
+      <div className={`fixed top-16 md:top-0 right-0 h-[calc(100vh-4rem)] md:h-full w-full md:w-[600px] lg:w-[700px] bg-white dark:bg-slate-900 shadow-2xl z-50 transform transition-transform duration-300 flex flex-col border-l border-slate-200 dark:border-slate-700 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
 
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between bg-white dark:bg-slate-900 gap-2">
