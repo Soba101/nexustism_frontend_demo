@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, Menu, ChevronRight, ChevronLeft, Activity, X } from 'lucide-react';
+import { Search, Filter, Menu, ChevronRight, ChevronLeft, Activity, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { MOCK_TICKETS } from '@/data/mockTickets';
+import { useTickets, useSemanticSearch, useSearchSuggestions } from '@/services/api';
 import { calculateResolutionTime } from '@/utils/helpers';
 import type { Ticket, TicketPriority } from '@/types';
 
@@ -19,14 +19,12 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedPriorities, setSelectedPriorities] = useState<TicketPriority[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
-  
-  // Advanced Search States
-  const [queryExpansion, setQueryExpansion] = useState(false);
-  const [reranking, setReranking] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Advanced Search States
+  const [queryExpansion, setQueryExpansion] = useState(true);
+  const [reranking, setReranking] = useState(true);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -46,91 +44,88 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Get unique assignment groups
-  const assignmentGroups = useMemo(() => {
-    const groups = [...new Set(MOCK_TICKETS.map(t => t.assigned_group))];
-    return groups.sort();
-  }, []);
-
-  // Typeahead Logic
-  useEffect(() => {
-    if (searchTerm.length > 2) {
-      const allTerms = ['VPN', 'Printer', 'Outlook', 'SAP', 'Login', 'Latency', 'Access Denied', 'Drive Mapping', 'Timeout'];
-      const matches = allTerms.filter(t => t.toLowerCase().includes(searchTerm.toLowerCase()));
-      setSuggestions(matches);
-      setShowSuggestions(matches.length > 0);
-    } else {
-      setShowSuggestions(false);
-    }
-  }, [searchTerm]);
-
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearchTerm, selectedCategories, selectedPriorities, statusFilter, dateRange, assignmentFilter]);
 
-  const filteredIncidents = useMemo(() => {
-    let results = MOCK_TICKETS;
-    
-    // Full-Text Search across multiple fields
-    if (debouncedSearchTerm) {
-      const searchLower = debouncedSearchTerm.toLowerCase();
-      results = results.filter(ticket => 
-        ticket.short_description.toLowerCase().includes(searchLower) ||
-        ticket.description.toLowerCase().includes(searchLower) ||
-        ticket.number.toLowerCase().includes(searchLower) ||
-        ticket.category.toLowerCase().includes(searchLower) ||
-        ticket.assigned_group.toLowerCase().includes(searchLower)
-      );
+  // API Hooks - use semantic search when there's a search term, otherwise browse tickets
+  const isSemanticSearch = debouncedSearchTerm.trim().length > 0;
+
+  // Semantic search hook (AI-powered)
+  const {
+    data: searchData,
+    isLoading: isSearchLoading,
+    error: searchError,
+  } = useSemanticSearch(debouncedSearchTerm, {
+    limit: 50,
+    rerank: reranking,
+    expand: queryExpansion,
+  });
+
+  // Browse tickets hook (for when no search term)
+  const {
+    data: ticketsData,
+    isLoading: isTicketsLoading,
+    error: ticketsError,
+  } = useTickets({
+    category: selectedCategories.length === 1 ? selectedCategories[0] : undefined,
+    priority: selectedPriorities.length === 1 ? selectedPriorities[0] : undefined,
+    state: statusFilter !== 'all' ? statusFilter : undefined,
+    page: currentPage,
+    limit: itemsPerPage,
+  });
+
+  // Suggestions hook
+  const { data: suggestions = [] } = useSearchSuggestions(searchTerm);
+
+  // Determine which data source to use
+  const isLoading = isSemanticSearch ? isSearchLoading : isTicketsLoading;
+  const error = isSemanticSearch ? searchError : ticketsError;
+
+  // Get raw results from appropriate source
+  const rawResults = useMemo(() => {
+    if (isSemanticSearch) {
+      return searchData?.results || [];
     }
-    
-    // Category Filter
-    if (selectedCategories.length > 0) {
+    return ticketsData?.tickets || [];
+  }, [isSemanticSearch, searchData, ticketsData]);
+
+  // Apply client-side filters on top of API results (for multi-select filters)
+  const filteredIncidents = useMemo(() => {
+    let results = rawResults;
+
+    // Category Filter (multi-select)
+    if (selectedCategories.length > 1) {
       results = results.filter(ticket => selectedCategories.includes(ticket.category));
     }
 
-    // Priority Filter
-    if (selectedPriorities.length > 0) {
+    // Priority Filter (multi-select)
+    if (selectedPriorities.length > 1) {
       results = results.filter(ticket => selectedPriorities.includes(ticket.priority));
     }
 
-    // Status Filter
-    if (statusFilter !== 'all') {
-      results = results.filter(ticket => ticket.state.toLowerCase() === statusFilter);
-    }
-
-    // Assignment Group Filter
-    if (assignmentFilter !== 'all') {
-      results = results.filter(ticket => ticket.assigned_group === assignmentFilter);
-    }
-
-    // Date Range Filter
-    if (dateRange !== 'all') {
-      const now = new Date();
-      const days = dateRange === 'last 7 days' ? 7 : dateRange === 'last 30 days' ? 30 : 0;
-      
-      if (days > 0) {
-        const cutoff = new Date();
-        cutoff.setDate(now.getDate() - days);
-        results = results.filter(ticket => new Date(ticket.opened_at) >= cutoff);
-      }
-    }
-
-    // Sorting Logic
+    // Client-side sorting (API doesn't support all sort options)
     if (sortBy === 'date-new') {
       results = [...results].sort((a, b) => new Date(b.opened_at).getTime() - new Date(a.opened_at).getTime());
     } else if (sortBy === 'date-old') {
       results = [...results].sort((a, b) => new Date(a.opened_at).getTime() - new Date(b.opened_at).getTime());
     } else if (sortBy === 'priority') {
-      const priorityOrder = { 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3 };
-      results = [...results].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+      const priorityOrder: Record<string, number> = { 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3 };
+      results = [...results].sort((a, b) => (priorityOrder[a.priority] || 99) - (priorityOrder[b.priority] || 99));
     } else {
       // Relevance (similarity_score descending)
-      results = [...results].sort((a, b) => b.similarity_score - a.similarity_score);
+      results = [...results].sort((a, b) => (b.similarity_score || 0) - (a.similarity_score || 0));
     }
 
     return results;
-  }, [debouncedSearchTerm, selectedCategories, selectedPriorities, statusFilter, dateRange, assignmentFilter, sortBy]);
+  }, [rawResults, selectedCategories, selectedPriorities, sortBy]);
+
+  // Get unique assignment groups from current results
+  const assignmentGroups = useMemo(() => {
+    const groups = [...new Set(rawResults.map(t => t.assigned_group).filter(Boolean))];
+    return groups.sort();
+  }, [rawResults]);
 
   const categories = ['Network', 'Software', 'Hardware', 'Database', 'Access'];
   const priorities: TicketPriority[] = ['Critical', 'High', 'Medium', 'Low'];
@@ -194,7 +189,7 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
         <div className="space-y-6">
           <div className="max-w-3xl">
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Resolve faster with Nexus</h1>
-            <p className="text-slate-500 dark:text-slate-400 mt-2 text-lg">Search {MOCK_TICKETS.length}+ tickets with AI-powered semantic matching.</p>
+            <p className="text-slate-500 dark:text-slate-400 mt-2 text-lg">Search {ticketsData?.total || 'thousands of'} tickets with AI-powered semantic matching.</p>
           </div>
 
           <div className="flex flex-col md:flex-row gap-4 items-start md:items-center max-w-4xl relative z-10">
@@ -315,8 +310,15 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
         {/* Results */}
         <div className="space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
-             <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
-               {isSearching ? 'Searching...' : `Found ${filteredIncidents.length} Results`}
+             <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap flex items-center gap-2">
+               {isLoading ? (
+                 <>
+                   <Loader2 className="w-4 h-4 animate-spin" />
+                   {isSemanticSearch ? 'AI Searching...' : 'Loading...'}
+                 </>
+               ) : (
+                 `Found ${filteredIncidents.length} Results`
+               )}
              </h2>
              <div className="flex items-center space-x-2">
                 <span className="text-sm text-slate-500 dark:text-slate-400">Sort by:</span>
@@ -334,7 +336,26 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
           </div>
 
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-             {filteredIncidents.length === 0 ? (
+             {/* Loading State */}
+             {isLoading ? (
+               <div className="p-12 text-center">
+                 <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto mb-4" />
+                 <h3 className="text-slate-900 dark:text-white font-medium">
+                   {isSemanticSearch ? 'Searching with AI...' : 'Loading tickets...'}
+                 </h3>
+                 <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
+                   {isSemanticSearch ? 'Finding semantically similar tickets' : 'Fetching from database'}
+                 </p>
+               </div>
+             ) : error ? (
+               <div className="p-12 text-center">
+                 <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                   <X className="w-6 h-6 text-red-500"/>
+                 </div>
+                 <h3 className="text-slate-900 dark:text-white font-medium">Failed to load tickets</h3>
+                 <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">{(error as Error).message || 'Please try again later.'}</p>
+               </div>
+             ) : filteredIncidents.length === 0 ? (
                <div className="p-12 text-center">
                  <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
                    <Search className="w-6 h-6 text-slate-400"/>

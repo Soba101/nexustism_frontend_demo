@@ -663,107 +663,76 @@ Backend API (port 8001) must:
 6. **ServiceNow Pipeline**: Exists for creating/reading/updating tickets in prod
 7. **Recommended Approach**: **Backend API Layer** - All frontend calls go through `/api/*` endpoints
 
-### 🚧 Current Integration Status (Jan 15, 2026)
+### 🚧 Current Integration Status (Jan 15, 2026) - UPDATED
 
-**What's Done:**
+**Backend Completed:**
 - ✅ Search hooks wired to `/search/hybrid` and `/search/causal` (POST)
 - ✅ Backend response normalization (`BackendSearchResult` → `Ticket`)
 - ✅ Causal search hook added (`useCausalSearch`)
-- ✅ `/api/*` endpoint stubs created (tickets, analytics) - **BUT NOT DATASET-AWARE**
-- ✅ Basic `to_ticket_shape` normalizer in backend - **INCOMPLETE**
+- ✅ `/api/*` endpoint stubs created (tickets, analytics) - **NOW DATASET-AWARE**
+- ✅ `normalize_incident_to_ticket()` handles both `incidents` and `servicenow_demo` schemas
+- ✅ **JWT validation middleware added** (optional, `REQUIRE_AUTH=true` to enforce)
+- ✅ **`fetch_all_incidents()` accepts `dataset` parameter**
+- ✅ **`/search/hybrid` extracts X-Dataset header and routes to correct table**
+- ✅ **`/search/causal` passes dataset context through pipeline**
 
-**Critical Gaps:**
-- ❌ Frontend doesn't extract/send `datasetMode` (no `X-Dataset` header)
-- ❌ Auth store doesn't read `user_metadata.role`
-- ❌ Backend stubs ignore dataset context (return same mock data for demo/prod)
-- ❌ Schema normalizer doesn't handle `incidents` vs `servicenow_demo` field differences
-- ❌ No Supabase JWT validation in backend
-- ❌ Search endpoints don't route based on dataset
+**Frontend Completed:**
+- ✅ Auth store extracts `user_metadata.role` (lines 82-83, 127-128, 186-187 in authStore.ts)
+- ✅ Auth store maintains `datasetMode: 'demo' | 'prod'` state (line 22)
+- ✅ API service sends `X-Dataset` header on all requests (line 24 in api.ts)
+- ✅ All React Query cache keys include `datasetMode`
+- ✅ **SearchPage.tsx wired to `useSemanticSearch` and `useTickets` hooks**
+- ✅ **RootCauseAnalysisPage.tsx wired to `useCausalGraph` hook (with mock fallback)**
+- ✅ **DashboardPage.tsx wired to `useTickets` and `useAnalyticsMetrics` hooks**
+- ✅ **GraphCanvas.tsx updated to receive edges as prop (not hardcoded)**
 
-**Why Current State Isn't Usable:**
-Without dataset awareness, frontend will always get the same data regardless of user role. The stubs are scaffolds that need to be rewritten to be dataset-aware before they provide value.
+**Remaining Gaps:**
+- ⚠️ `/api/causal-graph/{ticketId}` endpoint not implemented (RootCause uses mock fallback)
+- ⚠️ Analytics endpoints return mock data (need real SQL queries)
+- ⚠️ `servicenow_demo` table may not have embeddings for vector search
 
-### 🎯 Revised Implementation Plan
+**Why Integration Is Now Usable:**
+With dataset awareness in both frontend and backend, the system will:
+1. Extract user role on login → set `datasetMode`
+2. Send `X-Dataset` header on API calls
+3. Backend routes to correct table (`incidents` or `servicenow_demo`)
+4. Schema differences handled by `normalize_incident_to_ticket()`
 
-**Phase 2A: Frontend Dataset Context (1.5 hours) - START HERE**
+### 🎯 Revised Implementation Plan - PROGRESS UPDATE
 
-1. **Auth Store Update** (`src/stores/authStore.ts`)
-   - Extract `user_metadata.role` during login
-   - Store as `datasetMode: 'demo' | 'prod'` (default 'prod' if missing)
-   - Expose via selector for hooks/components
-   - Update `restoreSession()` to preserve `datasetMode`
+**Phase 2A: Frontend Dataset Context - ✅ COMPLETED**
 
-2. **API Service Update** (`src/services/api.ts`)
-   - Get `datasetMode` from auth store in `fetchAPI()`
-   - Add `X-Dataset` header to all requests
-   - Include `datasetMode` in React Query cache keys for all hooks
-   - Verify search hooks already use correct endpoints
+1. ✅ **Auth Store** - Already extracts `user_metadata.role` and maintains `datasetMode`
+2. ✅ **API Service** - Already sends `X-Dataset` header and includes in cache keys
+3. ✅ **Frontend Pages** - SearchPage, DashboardPage, RootCauseAnalysisPage all wired to API hooks
 
-3. **Settings Page** (`src/features/settings/SettingsPage.tsx`)
-   - Add read-only dataset indicator card
-   - Show current user email and dataset mode
-   - Add badge (demo = secondary, prod = default)
+**Phase 2B: Backend Dataset Routing - ✅ COMPLETED**
 
-**Phase 2B: Backend Dataset Routing (4 hours) - CRITICAL**
+1. ✅ **Dataset Context Extraction** - `get_dataset_mode()` reads X-Dataset header with query param fallback
+2. ✅ **Schema Normalizer** - `normalize_incident_to_ticket()` handles both table schemas
+3. ✅ **`/api/tickets` Endpoints** - Already dataset-aware via `get_dataset_mode()`
+4. ⚠️ **`/api/analytics/*` Endpoints** - Need real SQL queries (currently mock)
+5. ✅ **Search Endpoints** - `/search/hybrid` and `/search/causal` now dataset-aware
 
-1. **Dataset Context Extraction** (`api_service_production.py`)
-   - Add helper to read `X-Dataset` header (fallback to query param)
-   - Optional: validate against JWT `role` claim (future auth)
-   - Return dataset mode for all endpoint handlers
+**Phase 2C: Auth & Validation - ✅ COMPLETED**
 
-2. **Schema Normalizer Rewrite** (`api_service_production.py`)
-   - Replace `to_ticket_shape()` with dataset-aware version
-   - Map `incidents` fields: `id` (int→str), `number`, etc.
-   - Map `servicenow_demo` fields: `sys_id`→`id`, `incident_number`→`number`
-   - Handle optional fields (impact, urgency, service, etc.)
-   - Return unified `Ticket` JSON matching frontend types
+1. ✅ **JWT Validation** - `validate_jwt_token()` added with `REQUIRE_AUTH` env toggle
+2. ⚠️ **Dataset Authorization** - Not yet enforced (JWT role vs X-Dataset header)
 
-3. **Rewrite `/api/tickets` Endpoints**
-   - GET `/api/tickets`: query `incidents` OR `servicenow_demo` based on dataset
-   - GET `/api/tickets/{id}`: handle both int id and GUID
-   - PATCH `/api/tickets/{id}`: prod → ServiceNow pipeline, demo → read-only error
-   - POST `/api/tickets`: prod → ServiceNow pipeline, demo → read-only error
-   - Timeline/audit: return mock data for now (future enhancement)
+**Phase 2D: Integration Testing - 🔄 REMAINING**
 
-4. **Rewrite `/api/analytics/*` Endpoints**
-   - Query correct table based on dataset
-   - Compute metrics from real data (counts, aggregations)
-   - Return formatted JSON (no hardcoded values)
+1. ⬜ Create demo user in Supabase with `role: 'demo'`
+2. ⬜ Test login → verify `datasetMode` extracted correctly
+3. ⬜ Test `/api/tickets` → verify demo/prod routing works
+4. ⬜ Test search → verify dataset routing works
+5. ⬜ Test analytics → verify correct table queried
 
-5. **Update Search Endpoints**
-   - `/search/hybrid`: query `incidents.embedding` OR `servicenow_demo.embedding`
-   - `/search/causal`: same dataset routing
-   - Normalize search results before returning
+**Remaining Work:**
+- ⏳ Implement real SQL queries for analytics endpoints (~2 hours)
+- ⏳ Add `/api/causal-graph/{ticketId}` endpoint for RootCause page (~1 hour)
+- ⏳ End-to-end testing (~1.5 hours)
 
-**Phase 2C: Auth & Validation (2 hours) - SECURITY**
-
-1. **Supabase JWT Validation** (`api_service_production.py`)
-   - Add FastAPI dependency to validate Bearer token
-   - Extract `user_id` and optional `role` from JWT
-   - Return 401 for invalid/missing tokens
-   - Log auth failures for audit
-
-2. **Dataset Authorization** (optional now, required later)
-   - Compare `X-Dataset` header with JWT `role` claim
-   - Reject mismatched requests (demo user trying prod data)
-   - Return 403 for authorization failures
-
-**Phase 2D: Integration Testing (1.5 hours)**
-
-1. Create demo user in Supabase with `role: 'demo'`
-2. Create prod user with `role: 'prod'`
-3. Test login → verify `datasetMode` extracted correctly
-4. Test `/api/tickets` → verify demo user gets `servicenow_demo` data
-5. Test `/api/tickets` → verify prod user gets `incidents` data
-6. Test search → verify dataset routing works
-7. Test analytics → verify correct table queried
-8. Test write operations → verify prod can create, demo gets error
-
-**Estimated Total: 9 hours**
-- 1.5h frontend (Phase 2A)
-- 4h backend routing (Phase 2B)
-- 2h auth validation (Phase 2C)
-- 1.5h testing (Phase 2D)
+**Estimated Remaining: ~4.5 hours**
 
 ### 📋 Key Decisions & Open Questions
 
@@ -788,8 +757,11 @@ Without dataset awareness, frontend will always get the same data regardless of 
 
 ---
 
-**Ready to start Phase 2A (Frontend)? Confirm before implementation:**
-- [ ] Demo user account created in Supabase with `user_metadata.role = 'demo'`
-- [ ] Prod user account verified (e.g., `admin@admin.com` with `role = 'prod'`)
-- [ ] ServiceNow pipeline integration details documented
-- [ ] Approval to proceed with JWT validation in Phase 2C
+**✅ Phase 2A-2C Completed (Jan 15, 2026)**
+
+Integration is now functional. Remaining before production:
+- [ ] Create demo user account in Supabase with `user_metadata.role = 'demo'`
+- [ ] Implement real SQL queries for analytics endpoints
+- [ ] Add `/api/causal-graph/{ticketId}` endpoint
+- [ ] End-to-end testing with both demo and prod users
+- [ ] Set `REQUIRE_AUTH=true` to enforce JWT validation in production

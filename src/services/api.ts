@@ -35,7 +35,13 @@ async function fetchAPI<T>(
   });
 
   if (!response.ok) {
-    const error = await response.json();
+    // Handle 401 by signing out - session is invalid
+    if (response.status === 401) {
+      const { signOut } = await import('@/lib/supabase');
+      try { await signOut(); } catch {}
+      throw new Error('Session expired. Please log in again.');
+    }
+    const error = await response.json().catch(() => ({}));
     throw new Error(error.message || `API Error: ${response.statusText}`);
   }
 

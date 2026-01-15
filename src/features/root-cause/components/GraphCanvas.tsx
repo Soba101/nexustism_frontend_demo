@@ -1,9 +1,9 @@
 import { Activity, AlertCircle, GitCommit, AlertTriangle, Network, Shield } from 'lucide-react';
 import type { GraphNode, GraphEdge } from '@/types';
-import { GRAPH_EDGES } from '@/data/mockTickets';
 
 interface GraphCanvasProps {
   nodes: GraphNode[];
+  edges: GraphEdge[];
   zoom: number;
   pan: { x: number; y: number };
   dimensions: { width: number; height: number };
@@ -28,6 +28,7 @@ interface GraphCanvasProps {
 
 export const GraphCanvas = ({
   nodes,
+  edges,
   zoom,
   pan,
   dimensions,
@@ -60,7 +61,7 @@ export const GraphCanvas = ({
   };
 
   // Filter edges by confidence threshold
-  const filteredEdges = GRAPH_EDGES.filter(edge => edge.confidence >= minConfidence / 100);
+  const filteredEdges = edges.filter(edge => edge.confidence >= minConfidence / 100);
 
   // Determine cursor based on mode and state
   const getCursorClass = () => {

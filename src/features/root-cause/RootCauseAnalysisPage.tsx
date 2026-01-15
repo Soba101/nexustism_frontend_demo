@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
-import type { GraphNode, Ticket } from '@/types';
-import { GRAPH_NODES as RAW_NODES, GRAPH_EDGES } from '@/data/mockTickets';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import type { GraphNode, GraphEdge, Ticket } from '@/types';
+import { GRAPH_NODES as RAW_NODES, GRAPH_EDGES as MOCK_EDGES } from '@/data/mockTickets';
 import { initializeNodes, downloadSVG } from './utils/graphHelpers';
 import { useGraphPhysics } from './hooks/useGraphPhysics';
 import { GraphControls } from './components/GraphControls';
 import { GraphCanvas } from './components/GraphCanvas';
 import { NodeDetailPanel } from './components/NodeDetailPanel';
+import { useCausalGraph, useSubmitGraphFeedback } from '@/services/api';
 
 interface RootCauseAnalysisPageProps {
   setActivePage: (page: string) => void;
@@ -35,9 +36,43 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast, targetTicket }:
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize physics hook
+  // API hooks for causal graph data
+  // TODO: Backend needs /api/causal-graph/{ticketId} endpoint - using mock data as fallback
+  const ticketId = targetTicket?.id || targetTicket?.number || '';
+  const { data: graphData, isLoading: isGraphLoading, error: graphError } = useCausalGraph(ticketId);
+  const submitFeedback = useSubmitGraphFeedback();
+
+  // Use API data or fall back to mock data
+  const graphNodes = useMemo(() => {
+    if (graphData?.nodes && graphData.nodes.length > 0) {
+      return graphData.nodes;
+    }
+    // Fall back to mock data, optionally updating root node with target ticket
+    if (targetTicket) {
+      return RAW_NODES.map(node => {
+        if (node.type === 'root') {
+          return {
+            ...node,
+            label: targetTicket.number,
+            details: `Root Ticket: ${targetTicket.short_description}`
+          };
+        }
+        return node;
+      });
+    }
+    return RAW_NODES;
+  }, [graphData, targetTicket]);
+
+  const graphEdges: GraphEdge[] = useMemo(() => {
+    if (graphData?.edges && graphData.edges.length > 0) {
+      return graphData.edges;
+    }
+    return MOCK_EDGES;
+  }, [graphData]);
+
+  // Initialize physics hook with dynamic edges
   const { nodesRef, startSimulation, stopSimulation } = useGraphPhysics({
-    edges: GRAPH_EDGES,
+    edges: graphEdges,
     draggedNodeId,
     setNodes
   });
@@ -102,27 +137,13 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast, targetTicket }:
     }
   }, []);
 
-  // Initialize nodes (only once or when dimensions change or when target ticket changes)
+  // Initialize nodes (when dimensions, graph data, or target ticket changes)
   useEffect(() => {
+    // Don't initialize while loading API data
+    if (isGraphLoading && ticketId) return;
+
     const { width, height } = dimensions;
-
-    // Update root node if targetTicket is provided
-    let nodesToInitialize = RAW_NODES;
-    if (targetTicket) {
-      // Clone the nodes array and update the root node
-      nodesToInitialize = RAW_NODES.map(node => {
-        if (node.type === 'root') {
-          return {
-            ...node,
-            label: targetTicket.number,
-            details: `Root Ticket: ${targetTicket.short_description}`
-          };
-        }
-        return node;
-      });
-    }
-
-    const initialNodes = initializeNodes(nodesToInitialize, width, height);
+    const initialNodes = initializeNodes(graphNodes, width, height);
     nodesRef.current = initialNodes;
     setNodes(initialNodes);
 
@@ -130,7 +151,7 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast, targetTicket }:
 
     return () => stopSimulation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dimensions, targetTicket]); // Re-initialize when dimensions or target ticket changes
+  }, [dimensions, graphNodes, isGraphLoading]); // Re-initialize when dimensions or graph data changes
 
   // Canvas panning handlers
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
@@ -312,6 +333,7 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast, targetTicket }:
       <div ref={containerRef} className="flex-1 bg-slate-900 rounded-xl overflow-hidden shadow-2xl relative border border-slate-800 flex flex-col lg:flex-row min-h-[400px]">
         <GraphCanvas
           nodes={nodes}
+          edges={graphEdges}
           zoom={zoom}
           pan={pan}
           dimensions={dimensions}

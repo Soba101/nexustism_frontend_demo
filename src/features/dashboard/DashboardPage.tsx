@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, TrendingUp, Clock, AlertCircle, CheckCircle2, Activity, ArrowUpRight, ArrowDownRight, Users, Ticket as TicketIcon } from 'lucide-react';
-import { MOCK_TICKETS } from '@/data/mockTickets';
+import { Search, TrendingUp, Clock, AlertCircle, CheckCircle2, Activity, ArrowUpRight, ArrowDownRight, Users, Ticket as TicketIcon, Loader2 } from 'lucide-react';
+import { useTickets, useAnalyticsMetrics } from '@/services/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { Ticket } from '@/types';
@@ -16,32 +16,39 @@ interface DashboardPageProps {
 export const DashboardPage = ({ setActivePage, onSelectIncident, addToast }: DashboardPageProps) => {
   const [quickSearch, setQuickSearch] = useState('');
 
-  // Calculate KPIs
+  // API hooks for data
+  const { data: ticketsData, isLoading: isTicketsLoading, error: ticketsError } = useTickets({ limit: 50 });
+  const { data: metricsData, isLoading: isMetricsLoading } = useAnalyticsMetrics('30d');
+
+  const tickets = ticketsData?.tickets || [];
+  const isLoading = isTicketsLoading || isMetricsLoading;
+
+  // Calculate KPIs from API data
   const kpis = useMemo(() => {
-    const total = MOCK_TICKETS.length;
-    const openTickets = MOCK_TICKETS.filter(t => t.state === 'New' || t.state === 'In Progress').length;
-    const criticalTickets = MOCK_TICKETS.filter(t => t.priority === 'Critical').length;
-    const resolvedToday = MOCK_TICKETS.filter(t => t.state === 'Resolved').length;
-    
+    const total = metricsData?.totalTickets || ticketsData?.total || tickets.length;
+    const openTickets = tickets.filter(t => t.state === 'New' || t.state === 'In Progress').length;
+    const criticalTickets = tickets.filter(t => t.priority === 'Critical').length;
+    const resolvedToday = metricsData?.resolvedTickets || tickets.filter(t => t.state === 'Resolved').length;
+
     return {
       total,
       open: openTickets,
       critical: criticalTickets,
       resolved: resolvedToday,
-      openPercent: Math.round((openTickets / total) * 100),
-      criticalPercent: Math.round((criticalTickets / total) * 100)
+      openPercent: total > 0 ? Math.round((openTickets / total) * 100) : 0,
+      criticalPercent: total > 0 ? Math.round((criticalTickets / total) * 100) : 0
     };
-  }, []);
+  }, [tickets, ticketsData, metricsData]);
 
-  // Get recent tickets
+  // Get recent tickets from API
   const recentTickets = useMemo(() => {
-    return MOCK_TICKETS.slice(0, 5);
-  }, []);
+    return tickets.slice(0, 5);
+  }, [tickets]);
 
-  // Get high priority tickets
+  // Get high priority tickets from API
   const urgentTickets = useMemo(() => {
-    return MOCK_TICKETS.filter(t => t.priority === 'Critical' || t.priority === 'High').slice(0, 4);
-  }, []);
+    return tickets.filter(t => t.priority === 'Critical' || t.priority === 'High').slice(0, 4);
+  }, [tickets]);
 
   const handleQuickSearch = () => {
     if (quickSearch.trim()) {

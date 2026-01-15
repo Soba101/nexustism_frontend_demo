@@ -116,8 +116,27 @@ function App() {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [selectedTicketForAnalysis, setSelectedTicketForAnalysis] = useState<Ticket | null>(null);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [theme, setThemeState] = useState<'light' | 'dark'>(() => {
+    if (typeof window === 'undefined') return 'light';
+    return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
+  });
   const [toasts, setToasts] = useState<{id: number, msg: string, type: 'success' | 'info' | 'error'}[]>([]);
+
+  // Apply theme to HTML element
+  useEffect(() => {
+    const htmlElement = document.documentElement;
+    if (theme === 'dark') {
+      htmlElement.classList.add('dark');
+    } else {
+      htmlElement.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  // Theme setter that also updates HTML element
+  const setTheme = (newTheme: 'light' | 'dark') => {
+    setThemeState(newTheme);
+  };
 
   // Toasts Helper
   const addToast = (msg: string, type: 'success' | 'info' | 'error' = 'info') => {
@@ -131,12 +150,10 @@ function App() {
   // Show loading spinner while auth is initializing
   if (authLoading) {
     return (
-      <div className={theme}>
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-          <div className="relative w-16 h-16">
-            <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-slate-800"></div>
-            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 dark:border-t-blue-400 animate-spin"></div>
-          </div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="relative w-16 h-16">
+          <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-slate-800"></div>
+          <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 dark:border-t-blue-400 animate-spin"></div>
         </div>
       </div>
     );
@@ -144,19 +161,18 @@ function App() {
 
   if (!user) {
     return (
-      <div className={theme}>
+      <>
         <LoginPage />
         <ToastContainer
           toasts={toasts}
           onClose={(id) => setToasts(prev => prev.filter(t => t.id !== id))}
         />
-      </div>
+      </>
     );
   }
 
   return (
-    <div className={theme}>
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-white transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-white transition-colors duration-300">
         <Sidebar 
           activePage={activePage} 
           setActivePage={setActivePage} 
@@ -232,9 +248,8 @@ function App() {
           onClose={(id) => setToasts(prev => prev.filter(t => t.id !== id))}
         />
       </div>
-    </div>
-  );
-}
+    );
+  }
 
 // Wrap App with Error Boundary
 export default function AppWithErrorBoundary() {
