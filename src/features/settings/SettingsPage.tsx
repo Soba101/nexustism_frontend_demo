@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Globe, Sun, Moon, Languages, LogOut, User, Bell, Search as SearchIcon, Gauge, Download, Type, Eye } from 'lucide-react';
+import { Globe, Sun, Moon, Languages, LogOut, User, Bell, Search as SearchIcon, Gauge, Download, Type, Eye, Database } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { storageHelper, exportToCSV } from '@/utils/helpers';
+import { useAuthStore } from '@/stores/authStore';
 import type { UserPreferences } from '@/types';
 
 interface SettingsPageProps {
@@ -35,6 +36,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
 };
 
 export const SettingsPage = ({ theme, setTheme, onLogout }: SettingsPageProps) => {
+  const { user, datasetMode } = useAuthStore();
   const [preferences, setPreferences] = useState<UserPreferences>(() => 
     storageHelper.get('user_preferences', DEFAULT_PREFERENCES)
   );
@@ -94,6 +96,35 @@ export const SettingsPage = ({ theme, setTheme, onLogout }: SettingsPageProps) =
       </div>
 
       <div className="grid gap-8">
+        {/* Dataset Information Section */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
+            <Database className="w-5 h-5 mr-2 text-slate-400" /> Dataset Information
+          </h2>
+          <Card className="divide-y divide-slate-100 dark:divide-slate-700">
+            <div className="p-4 flex items-center justify-between">
+              <div>
+                <p className="font-medium text-slate-900 dark:text-white">Current Dataset</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {datasetMode === 'demo' ? 'Demo Dataset (Read-only)' : 'Production Dataset'}
+                </p>
+              </div>
+              <Badge variant={datasetMode === 'demo' ? 'secondary' : 'default'}>
+                {datasetMode.toUpperCase()}
+              </Badge>
+            </div>
+            <div className="p-4">
+              <p className="text-sm text-slate-700 dark:text-slate-300 mb-1">Logged in as</p>
+              <p className="text-sm font-mono text-slate-900 dark:text-white">{user?.email || 'N/A'}</p>
+            </div>
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/50">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                💡 Dataset mode is determined by your account role. Contact your administrator to change datasets.
+              </p>
+            </div>
+          </Card>
+        </section>
+
         {/* Profile Section */}
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">

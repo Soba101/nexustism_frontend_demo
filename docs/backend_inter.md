@@ -663,92 +663,133 @@ Backend API (port 8001) must:
 6. **ServiceNow Pipeline**: Exists for creating/reading/updating tickets in prod
 7. **Recommended Approach**: **Backend API Layer** - All frontend calls go through `/api/*` endpoints
 
-### 🔄 Phase 2: Frontend Integration (Ready to Start)
+### 🚧 Current Integration Status (Jan 15, 2026)
 
-**Immediate Tasks:**
+**What's Done:**
+- ✅ Search hooks wired to `/search/hybrid` and `/search/causal` (POST)
+- ✅ Backend response normalization (`BackendSearchResult` → `Ticket`)
+- ✅ Causal search hook added (`useCausalSearch`)
+- ✅ `/api/*` endpoint stubs created (tickets, analytics) - **BUT NOT DATASET-AWARE**
+- ✅ Basic `to_ticket_shape` normalizer in backend - **INCOMPLETE**
 
-1. ✅ Update `authStore.ts` to extract and store `datasetMode` from `user_metadata.role`
-2. ✅ Modify `api.ts` to include `X-Dataset` header in all requests
-3. ✅ Update all React Query hooks to include `datasetMode` in cache keys
-4. ✅ Add dataset indicator (read-only) to Settings page
-5. ✅ Test login with demo user (verify demo data loads)
-6. ✅ Test login with prod user (verify prod data loads)
+**Critical Gaps:**
+- ❌ Frontend doesn't extract/send `datasetMode` (no `X-Dataset` header)
+- ❌ Auth store doesn't read `user_metadata.role`
+- ❌ Backend stubs ignore dataset context (return same mock data for demo/prod)
+- ❌ Schema normalizer doesn't handle `incidents` vs `servicenow_demo` field differences
+- ❌ No Supabase JWT validation in backend
+- ❌ Search endpoints don't route based on dataset
 
-**Backend API Requirements (Port 8001):**
+**Why Current State Isn't Usable:**
+Without dataset awareness, frontend will always get the same data regardless of user role. The stubs are scaffolds that need to be rewritten to be dataset-aware before they provide value.
 
-- ✅ Search endpoints already implemented (`/search/hybrid`, `/search/causal`)
-- ❌ **NEED TO BUILD**: CRUD endpoints (`/api/tickets`, `/api/tickets/:id`, `/api/analytics/*`)
-- ❌ **NEED TO IMPLEMENT**: Dataset routing logic (check `X-Dataset` header, query correct table)
-- ❌ **NEED TO IMPLEMENT**: Schema normalization (map field names from `incidents`/`servicenow_demo` to unified `Ticket` shape)
-- ✅ **NEED TO INTEGRATE**: ServiceNow pipeline for create/update operations on prod dataset
+### 🎯 Revised Implementation Plan
 
-**Frontend Type Alignment:**
+**Phase 2A: Frontend Dataset Context (1.5 hours) - START HERE**
 
-Check if `src/types/index.ts` `Ticket` interface matches normalized API response. Expected fields:
+1. **Auth Store Update** (`src/stores/authStore.ts`)
+   - Extract `user_metadata.role` during login
+   - Store as `datasetMode: 'demo' | 'prod'` (default 'prod' if missing)
+   - Expose via selector for hooks/components
+   - Update `restoreSession()` to preserve `datasetMode`
 
-```typescript
-interface Ticket {
-  id: string;  // Unified ID (int or GUID as string)
-  number: string;  // Unified ticket number
-  short_description: string;
-  description: string;
-  category: string;
-  priority: string;  // "4 - Low", "3 - Moderate", etc.
-  state: string;  // "New", "Closed", etc.
-  assignment_group: string;
-  opened_at: string;  // ISO timestamp
-  resolved_at?: string;  // Optional
-  // Demo-only fields (null for prod)
-  impact?: string;
-  urgency?: string;
-  caller_id?: string;
-  // Prod-only fields (null for demo)
-  service?: string;
-  service_offering?: string;
-  // AI/Search fields
-  similarity_score?: number;
-  related_ids?: string[];
-}
-```
+2. **API Service Update** (`src/services/api.ts`)
+   - Get `datasetMode` from auth store in `fetchAPI()`
+   - Add `X-Dataset` header to all requests
+   - Include `datasetMode` in React Query cache keys for all hooks
+   - Verify search hooks already use correct endpoints
 
-### 🎯 Action Items (In Priority Order)
+3. **Settings Page** (`src/features/settings/SettingsPage.tsx`)
+   - Add read-only dataset indicator card
+   - Show current user email and dataset mode
+   - Add badge (demo = secondary, prod = default)
 
-**Phase 2A: Frontend Setup (2 hours)**
-1. Update `authStore.ts` to extract `user.metadata.role` → `datasetMode`
-2. Update `api.ts` to add `X-Dataset: datasetMode` header to requests
-3. Update React Query cache keys to include `datasetMode`
-4. Add dataset indicator to Settings page
-5. Test basic login flow with mock data
+**Phase 2B: Backend Dataset Routing (4 hours) - CRITICAL**
 
-**Phase 2B: Backend Endpoint Implementation (4+ hours - YOUR TEAM)**
-1. Build `/api/tickets` GET endpoint (dataset-aware)
-2. Build `/api/tickets/:id` GET endpoint
-3. Build `/api/tickets` POST endpoint (routes to ServiceNow for prod)
-4. Build `/api/tickets/:id` PATCH endpoint (routes to ServiceNow for prod)
-5. Build `/api/analytics/metrics` endpoint
-6. Implement schema normalization layer (map `incidents`/`servicenow_demo` fields to `Ticket`)
-7. Test dataset routing with `X-Dataset` header
+1. **Dataset Context Extraction** (`api_service_production.py`)
+   - Add helper to read `X-Dataset` header (fallback to query param)
+   - Optional: validate against JWT `role` claim (future auth)
+   - Return dataset mode for all endpoint handlers
 
-**Phase 2C: Integration Testing (1.5 hours)**
-1. Login with demo user → verify demo data loads via `/api/tickets`
-2. Login with prod user → verify prod data loads via `/api/tickets`
-3. Create/Update test: prod user creates ticket → verify ServiceNow pipeline triggered
-4. Verify schema normalization: fields properly mapped
-5. Check all features: Search, Analytics, Root Cause with real data
+2. **Schema Normalizer Rewrite** (`api_service_production.py`)
+   - Replace `to_ticket_shape()` with dataset-aware version
+   - Map `incidents` fields: `id` (int→str), `number`, etc.
+   - Map `servicenow_demo` fields: `sys_id`→`id`, `incident_number`→`number`
+   - Handle optional fields (impact, urgency, service, etc.)
+   - Return unified `Ticket` JSON matching frontend types
 
-**Estimated Total Time**: 7.5+ hours (2 frontend, 4+ backend, 1.5 testing)
+3. **Rewrite `/api/tickets` Endpoints**
+   - GET `/api/tickets`: query `incidents` OR `servicenow_demo` based on dataset
+   - GET `/api/tickets/{id}`: handle both int id and GUID
+   - PATCH `/api/tickets/{id}`: prod → ServiceNow pipeline, demo → read-only error
+   - POST `/api/tickets`: prod → ServiceNow pipeline, demo → read-only error
+   - Timeline/audit: return mock data for now (future enhancement)
 
-### 📋 Questions to Resolve
+4. **Rewrite `/api/analytics/*` Endpoints**
+   - Query correct table based on dataset
+   - Compute metrics from real data (counts, aggregations)
+   - Return formatted JSON (no hardcoded values)
 
-1. **Backend CRUD endpoints**: Do they exist but need dataset routing added, or need to be built from scratch?
-2. **ServiceNow pipeline details**: How are create/update calls made? What's the integration point for backend?
-3. **Schema mapping**: Should normalization be in backend layer or separate utility module?
-4. **Demo dataset**: Should demo be read-only (testing) or writable (also creating demo records)?
-5. **Roles timeline**: When should role-based enforcement be added? Phase 2 or later?
+5. **Update Search Endpoints**
+   - `/search/hybrid`: query `incidents.embedding` OR `servicenow_demo.embedding`
+   - `/search/causal`: same dataset routing
+   - Normalize search results before returning
+
+**Phase 2C: Auth & Validation (2 hours) - SECURITY**
+
+1. **Supabase JWT Validation** (`api_service_production.py`)
+   - Add FastAPI dependency to validate Bearer token
+   - Extract `user_id` and optional `role` from JWT
+   - Return 401 for invalid/missing tokens
+   - Log auth failures for audit
+
+2. **Dataset Authorization** (optional now, required later)
+   - Compare `X-Dataset` header with JWT `role` claim
+   - Reject mismatched requests (demo user trying prod data)
+   - Return 403 for authorization failures
+
+**Phase 2D: Integration Testing (1.5 hours)**
+
+1. Create demo user in Supabase with `role: 'demo'`
+2. Create prod user with `role: 'prod'`
+3. Test login → verify `datasetMode` extracted correctly
+4. Test `/api/tickets` → verify demo user gets `servicenow_demo` data
+5. Test `/api/tickets` → verify prod user gets `incidents` data
+6. Test search → verify dataset routing works
+7. Test analytics → verify correct table queried
+8. Test write operations → verify prod can create, demo gets error
+
+**Estimated Total: 9 hours**
+- 1.5h frontend (Phase 2A)
+- 4h backend routing (Phase 2B)
+- 2h auth validation (Phase 2C)
+- 1.5h testing (Phase 2D)
+
+### 📋 Key Decisions & Open Questions
+
+**Decisions Made:**
+1. ✅ Use `X-Dataset` header (primary) with query param fallback
+2. ✅ Demo dataset is **read-only** (no create/update)
+3. ✅ Backend owns schema normalization (frontend receives unified `Ticket` shape)
+4. ✅ ServiceNow pipeline integration for prod writes only
+5. ✅ Default to `prod` dataset if `user_metadata.role` missing
+
+**Open Questions:**
+1. **Auth timing**: Validate JWT in Phase 2C or defer to Phase 3?
+   - **Recommendation**: Phase 2C (security baseline)
+2. **RLS policies**: Implement alongside JWT or as separate phase?
+   - **Recommendation**: Phase 3 (defense in depth after basic auth works)
+3. **Demo user account**: Need to create `demo@demo.com` with `role: 'demo'` metadata
+   - **Action**: Create in Supabase Studio before testing
+4. **ServiceNow pipeline**: What's the exact integration point for backend create/update?
+   - **Action**: Document pipeline API/SDK usage
+5. **Error handling**: How should demo users be notified of read-only restriction?
+   - **Recommendation**: 403 with message "Demo dataset is read-only"
 
 ---
 
-**Ready to proceed with Phase 2A (Frontend)? Confirm:**
-- Can you/your team build the backend CRUD endpoints in parallel?
-- Any changes to the integration approach?
-- Timeline for roles implementation?
+**Ready to start Phase 2A (Frontend)? Confirm before implementation:**
+- [ ] Demo user account created in Supabase with `user_metadata.role = 'demo'`
+- [ ] Prod user account verified (e.g., `admin@admin.com` with `role = 'prod'`)
+- [ ] ServiceNow pipeline integration details documented
+- [ ] Approval to proceed with JWT validation in Phase 2C
