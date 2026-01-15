@@ -1,31 +1,31 @@
 "use client";
 
 import { useState } from 'react';
-import { Activity, Mail, Lock } from 'lucide-react';
+import { Activity, Mail, Lock, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { User } from '@/types';
+import { useAuthStore } from '@/stores/authStore';
 
-interface LoginPageProps {
-  onLogin: (user: User) => void;
-}
-
-export const LoginPage = ({ onLogin }: LoginPageProps) => {
-  const [loading, setLoading] = useState(false);
+export const LoginPage = () => {
+  const { login, error, isLoading } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [localError, setLocalError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setTimeout(() => {
-      onLogin({
-        name: 'Jane Smith',
-        email: email,
-        role: 'L2 Support Lead',
-        avatar: 'JS'
-      });
-      setLoading(false);
-    }, 1000);
+    setLocalError('');
+
+    if (!email || !password) {
+      setLocalError('Please enter both email and password');
+      return;
+    }
+
+    try {
+      await login(email, password);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      setLocalError(message);
+    }
   };
 
   return (
@@ -38,6 +38,13 @@ export const LoginPage = ({ onLogin }: LoginPageProps) => {
           <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">ITSM Nexus</h2>
           <p className="mt-2 text-slate-500 dark:text-slate-400">Sign in to access ticket intelligence</p>
         </div>
+
+        {(error || localError) && (
+          <div className="flex gap-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-red-700 dark:text-red-300">{error || localError}</p>
+          </div>
+        )}
         
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4">
@@ -52,7 +59,8 @@ export const LoginPage = ({ onLogin }: LoginPageProps) => {
                   required 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  disabled={isLoading}
+                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors disabled:opacity-50"
                   placeholder="name@company.com"
                 />
               </div>
@@ -68,17 +76,22 @@ export const LoginPage = ({ onLogin }: LoginPageProps) => {
                   required 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  disabled={isLoading}
+                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors disabled:opacity-50"
                   placeholder="••••••••"
                 />
               </div>
             </div>
           </div>
 
-          <Button className="w-full h-12 text-base" disabled={loading}>
-            {loading ? 'Authenticating...' : 'Sign In'}
+          <Button className="w-full h-12 text-base" disabled={isLoading}>
+            {isLoading ? 'Authenticating...' : 'Sign In'}
           </Button>
         </form>
+
+        <p className="text-center text-xs text-slate-500 dark:text-slate-400 mt-6">
+          Demo credentials: admin@admin.com / password
+        </p>
       </div>
     </div>
   );

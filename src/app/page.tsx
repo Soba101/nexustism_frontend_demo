@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useAuthStore, useInitializeAuth } from '@/stores/authStore';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { WebVitalsReporter } from '@/components/WebVitalsReporter';
 import { 
@@ -106,11 +107,16 @@ const LoadingSpinner = () => (
 
 // 4. Root App Component
 function App() {
+  // Auth state from Zustand
+  const { user, isLoading: authLoading } = useAuthStore();
+  useInitializeAuth();
+
+  // Local UI state
   const [activePage, setActivePage] = useState('home');
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [selectedTicketForAnalysis, setSelectedTicketForAnalysis] = useState<Ticket | null>(null);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [user, setUser] = useState<User | null>(null);
   const [toasts, setToasts] = useState<{id: number, msg: string, type: 'success' | 'info' | 'error'}[]>([]);
 
   // Toasts Helper
@@ -122,13 +128,24 @@ function App() {
     }, 3000);
   };
 
+  // Show loading spinner while auth is initializing
+  if (authLoading) {
+    return (
+      <div className={theme}>
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+          <div className="relative w-16 h-16">
+            <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-slate-800"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 dark:border-t-blue-400 animate-spin"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className={theme}>
-        <LoginPage onLogin={(u) => {
-           setUser(u);
-           addToast(`Welcome back, ${u.name.split(' ')[0]}`, 'success');
-        }} />
+        <LoginPage />
         <ToastContainer
           toasts={toasts}
           onClose={(id) => setToasts(prev => prev.filter(t => t.id !== id))}
@@ -167,7 +184,11 @@ function App() {
         {activePage === 'analyze' && (
           <PageWrapper setIsMobileOpen={setIsMobileOpen}>
             <Suspense fallback={<LoadingSpinner />}>
-              <RootCauseAnalysisPage setActivePage={setActivePage} addToast={addToast} />
+              <RootCauseAnalysisPage 
+                setActivePage={setActivePage} 
+                addToast={addToast}
+                targetTicket={selectedTicketForAnalysis}
+              />
             </Suspense>
           </PageWrapper>
         )}
@@ -182,7 +203,14 @@ function App() {
 
         {activePage === 'settings' && (
           <PageWrapper setIsMobileOpen={setIsMobileOpen}>
-            <SettingsPage theme={theme} setTheme={setTheme} onLogout={() => { setUser(null); addToast('Logged out successfully', 'info'); }} />
+            <SettingsPage theme={theme} setTheme={setTheme} onLogout={async () => { 
+              try {
+                await useAuthStore.getState().logout();
+                addToast('Logged out successfully', 'info');
+              } catch (error) {
+                addToast('Failed to logout', 'error');
+              }
+            }} />
           </PageWrapper>
         )}
 
@@ -191,6 +219,7 @@ function App() {
           isOpen={!!selectedTicket}
           onClose={() => setSelectedTicket(null)}
           onAnalyze={() => {
+            setSelectedTicketForAnalysis(selectedTicket);
             setSelectedTicket(null);
             setActivePage('analyze');
           }}

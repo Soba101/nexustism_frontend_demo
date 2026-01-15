@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import type { GraphNode } from '@/types';
+import type { GraphNode, Ticket } from '@/types';
 import { GRAPH_NODES as RAW_NODES, GRAPH_EDGES } from '@/data/mockTickets';
 import { initializeNodes, downloadSVG } from './utils/graphHelpers';
 import { useGraphPhysics } from './hooks/useGraphPhysics';
@@ -12,9 +12,10 @@ import { NodeDetailPanel } from './components/NodeDetailPanel';
 interface RootCauseAnalysisPageProps {
   setActivePage: (page: string) => void;
   addToast: (msg: string, type: 'success' | 'info' | 'error') => void;
+  targetTicket?: Ticket | null;
 }
 
-export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnalysisPageProps) => {
+export const RootCauseAnalysisPage = ({ setActivePage, addToast, targetTicket }: RootCauseAnalysisPageProps) => {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -101,11 +102,27 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
     }
   }, []);
 
-  // Initialize nodes (only once or when dimensions change)
+  // Initialize nodes (only once or when dimensions change or when target ticket changes)
   useEffect(() => {
     const { width, height } = dimensions;
 
-    const initialNodes = initializeNodes(RAW_NODES, width, height);
+    // Update root node if targetTicket is provided
+    let nodesToInitialize = RAW_NODES;
+    if (targetTicket) {
+      // Clone the nodes array and update the root node
+      nodesToInitialize = RAW_NODES.map(node => {
+        if (node.type === 'root') {
+          return {
+            ...node,
+            label: targetTicket.number,
+            details: `Root Ticket: ${targetTicket.short_description}`
+          };
+        }
+        return node;
+      });
+    }
+
+    const initialNodes = initializeNodes(nodesToInitialize, width, height);
     nodesRef.current = initialNodes;
     setNodes(initialNodes);
 
@@ -113,7 +130,7 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
 
     return () => stopSimulation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dimensions]); // Re-initialize when dimensions change
+  }, [dimensions, targetTicket]); // Re-initialize when dimensions or target ticket changes
 
   // Canvas panning handlers
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
@@ -243,6 +260,40 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast }: RootCauseAnal
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-8 animate-in fade-in duration-500 h-[calc(100vh-4rem)] flex flex-col">
+      {/* Target Ticket Header */}
+      {targetTicket && (
+        <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+                Root Cause Analysis: {targetTicket.number}
+              </h2>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                {targetTicket.short_description}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                targetTicket.priority === 'Critical' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                targetTicket.priority === 'High' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' :
+                targetTicket.priority === 'Medium' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' :
+                'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300'
+              }`}>
+                {targetTicket.priority}
+              </span>
+              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                targetTicket.state === 'New' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
+                targetTicket.state === 'In Progress' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' :
+                targetTicket.state === 'Resolved' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                'bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300'
+              }`}>
+                {targetTicket.state}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <GraphControls
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
