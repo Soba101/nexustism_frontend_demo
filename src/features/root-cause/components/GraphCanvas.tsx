@@ -107,7 +107,13 @@ export const GraphCanvas = ({
         {nodes.length > 0 && filteredEdges.map((edge, i) => {
           const sourceNode = nodes.find(n => n.id === edge.source);
           const targetNode = nodes.find(n => n.id === edge.target);
-          if (!sourceNode || !targetNode || sourceNode.x === undefined || targetNode.x === undefined) return null;
+          // Check for valid positions (not undefined, null, or NaN)
+          const hasValidPositions = sourceNode && targetNode &&
+            typeof sourceNode.x === 'number' && !isNaN(sourceNode.x) &&
+            typeof sourceNode.y === 'number' && !isNaN(sourceNode.y) &&
+            typeof targetNode.x === 'number' && !isNaN(targetNode.x) &&
+            typeof targetNode.y === 'number' && !isNaN(targetNode.y);
+          if (!hasValidPositions) return null;
 
           const isSelected = selectedEdge?.source === edge.source && selectedEdge?.target === edge.target;
           const isHighlighted = hoveredNodeId === edge.source || hoveredNodeId === edge.target;
@@ -168,6 +174,11 @@ export const GraphCanvas = ({
 
         {/* Nodes */}
         {nodes.map((node) => {
+          // Skip nodes with invalid positions
+          const nodeX = typeof node.x === 'number' && !isNaN(node.x) ? node.x : null;
+          const nodeY = typeof node.y === 'number' && !isNaN(node.y) ? node.y : null;
+          if (nodeX === null || nodeY === null) return null;
+
           const isHighlighted = matchesSearch(node);
           const isHovered = hoveredNodeId === node.id;
           const isSelected = selectedNodeId === node.id;
@@ -179,7 +190,7 @@ export const GraphCanvas = ({
           return (
           <g
             key={node.id}
-            transform={`translate(${node.x || 0},${node.y || 0})`}
+            transform={`translate(${nodeX},${nodeY})`}
             onMouseDown={(e) => onNodeMouseDown(e, node.id)}
             onMouseEnter={() => onNodeMouseEnter(node.id)}
             onMouseLeave={onNodeMouseLeave}

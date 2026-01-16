@@ -1,6 +1,6 @@
-import { Clock, AlertCircle } from 'lucide-react';
+import { Clock, AlertCircle, Loader2 } from 'lucide-react';
 import type { Ticket } from '@/types';
-import { MOCK_TICKETS } from '@/data/mockTickets';
+import { useRelatedTickets } from '@/services/api';
 import { Badge } from '@/components/ui/wrappers';
 
 interface RelatedTicketsTabProps {
@@ -9,7 +9,47 @@ interface RelatedTicketsTabProps {
 }
 
 export const RelatedTicketsTab = ({ ticket, onSelectRelated }: RelatedTicketsTabProps) => {
-  const relatedTickets = MOCK_TICKETS.filter(t => ticket.related_ids.includes(t.id));
+  const ticketId = ticket.id || ticket.number;
+  const { data: relatedTickets, isLoading, error } = useRelatedTickets(ticketId);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 space-y-3">
+        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+        <p className="text-sm text-slate-500 dark:text-slate-400">Finding related tickets...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-lg p-4 flex items-start space-x-3">
+        <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+        <div>
+          <h4 className="font-semibold text-red-900 dark:text-red-100 text-sm">Error Loading Related Tickets</h4>
+          <p className="text-red-700 dark:text-red-300 text-xs mt-1">
+            {error instanceof Error ? error.message : 'Failed to load related tickets. Please try again.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!relatedTickets || relatedTickets.length === 0) {
+    return (
+      <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg p-6 text-center">
+        <AlertCircle className="w-8 h-8 text-slate-400 mx-auto mb-3" />
+        <h4 className="font-semibold text-slate-700 dark:text-slate-300 text-sm">No Related Tickets Found</h4>
+        <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">
+          No semantically similar tickets were found for this incident.
+        </p>
+      </div>
+    );
+  }
+
+  // Get top similarity score for insight message
+  const topMatch = relatedTickets[0];
+  const topScore = topMatch?.similarity_score || 0;
 
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
@@ -18,14 +58,17 @@ export const RelatedTicketsTab = ({ ticket, onSelectRelated }: RelatedTicketsTab
         <div>
           <h4 className="font-semibold text-blue-900 dark:text-blue-100 text-sm">AI Insight</h4>
           <p className="text-blue-700 dark:text-blue-300 text-xs mt-1">
-            This ticket has a 98% semantic similarity to TKT000985. It is likely a recurrence of the Singapore Gateway latency issue.
+            Found {relatedTickets.length} related ticket{relatedTickets.length !== 1 ? 's' : ''}.
+            {topScore >= 80 && topMatch && ` ${topMatch.number} shows a ${topScore}% semantic similarity and may indicate a recurring issue.`}
+            {topScore >= 60 && topScore < 80 && ` The highest match (${topScore}%) suggests potential connection to past incidents.`}
+            {topScore < 60 && ` Matches have moderate similarity - review to determine relevance.`}
           </p>
         </div>
       </div>
 
       {relatedTickets.map(related => (
         <div
-          key={related.id}
+          key={related.id || related.number}
           className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-sm transition-all cursor-pointer group bg-white dark:bg-slate-800"
           onClick={() => onSelectRelated(related)}
         >

@@ -80,20 +80,36 @@ export const useGraphPhysics = ({
             if (other) {
               const dx = (other.x || 0) - (node.x || 0);
               const dy = (other.y || 0) - (node.y || 0);
-              const strength = edge.confidence * 0.02;
+              // Normalize confidence to 0-1 range (handle both decimal and percentage formats)
+              const normalizedConf = edge.confidence > 1 ? edge.confidence / 100 : edge.confidence;
+              const strength = Math.min(normalizedConf, 1) * 0.02;
               fx += dx * strength;
               fy += dy * strength;
             }
           }
         });
 
+        // Clamp forces to prevent Infinity/NaN
+        const maxForce = 50;
+        fx = Math.max(-maxForce, Math.min(maxForce, fx));
+        fy = Math.max(-maxForce, Math.min(maxForce, fy));
+
         // Apply Velocity
         node.vx = ((node.vx || 0) + fx) * 0.5; // High friction (0.5) to settle quickly
         node.vy = ((node.vy || 0) + fy) * 0.5;
 
-        // Update Position
-        node.x = (node.x || 0) + node.vx;
-        node.y = (node.y || 0) + node.vy;
+        // Clamp velocity to prevent runaway values
+        const maxVel = 30;
+        node.vx = Math.max(-maxVel, Math.min(maxVel, node.vx || 0));
+        node.vy = Math.max(-maxVel, Math.min(maxVel, node.vy || 0));
+
+        // Update Position with bounds check
+        node.x = (node.x || 0) + (node.vx || 0);
+        node.y = (node.y || 0) + (node.vy || 0);
+
+        // Guard against NaN/Infinity
+        if (!isFinite(node.x)) node.x = 400;
+        if (!isFinite(node.y)) node.y = 300;
       });
 
       // Batched re-render: only trigger React update every Nth frame

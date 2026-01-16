@@ -178,6 +178,16 @@ export const useUpdateTicket = () => {
   });
 };
 
+export const useRelatedTickets = (ticketId: string) => {
+  const { datasetMode } = useAuthStore();
+  return useQuery({
+    queryKey: ['tickets', datasetMode, ticketId, 'related'],
+    queryFn: () => fetchAPI<Ticket[]>(`/api/tickets/${ticketId}/related`),
+    staleTime: 5 * 60 * 1000,
+    enabled: !!ticketId,
+  });
+};
+
 // ============================================================================
 // ANALYTICS QUERIES
 // ============================================================================
