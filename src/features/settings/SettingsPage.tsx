@@ -1,12 +1,13 @@
-"use client";
+﻿"use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Globe, Sun, Moon, Languages, LogOut, User, Bell, Search as SearchIcon, Gauge, Download, Type, Eye, Database } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { storageHelper, exportToCSV } from '@/utils/helpers';
 import { useAuthStore } from '@/stores/authStore';
+import { useUserPreferences, useUpdateUserPreferences } from '@/services/api';
 import type { UserPreferences } from '@/types';
 
 interface SettingsPageProps {
@@ -37,7 +38,12 @@ const DEFAULT_PREFERENCES: UserPreferences = {
 
 export const SettingsPage = ({ theme, setTheme, onLogout }: SettingsPageProps) => {
   const { user, datasetMode } = useAuthStore();
-  const [preferences, setPreferences] = useState<UserPreferences>(() => 
+  const { data: preferencesData } = useUserPreferences();
+  const updatePreferencesMutation = useUpdateUserPreferences();
+  const saveTimeoutRef = useRef<number | null>(null);
+  const syncingFromServerRef = useRef(false);
+
+  const [preferences, setPreferences] = useState<UserPreferences>(() =>
     storageHelper.get('user_preferences', DEFAULT_PREFERENCES)
   );
   
@@ -45,11 +51,56 @@ export const SettingsPage = ({ theme, setTheme, onLogout }: SettingsPageProps) =
     storageHelper.get('user_profile', { name: 'Admin User', email: 'admin@nexus.ai' })
   );
 
-  // Save preferences to localStorage whenever they change
+  // Apply server preferences when available
+  useEffect(() => {
+    if (!preferencesData) {
+      return;
+    }
+    syncingFromServerRef.current = true;
+    setPreferences((prev) => ({
+      ...DEFAULT_PREFERENCES,
+      ...prev,
+      ...preferencesData,
+      notifications: {
+        ...DEFAULT_PREFERENCES.notifications,
+        ...prev.notifications,
+        ...preferencesData.notifications,
+      },
+      accessibility: {
+        ...DEFAULT_PREFERENCES.accessibility,
+        ...prev.accessibility,
+        ...preferencesData.accessibility,
+      },
+    }));
+  }, [preferencesData]);
+
+  // Save preferences to localStorage and backend (debounced)
   useEffect(() => {
     storageHelper.set('user_preferences', preferences);
+
+    if (syncingFromServerRef.current) {
+      syncingFromServerRef.current = false;
+      return;
+    }
+
+    if (saveTimeoutRef.current) {
+      window.clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = window.setTimeout(() => {
+      updatePreferencesMutation.mutate(preferences);
+    }, 400);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        window.clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [preferences, updatePreferencesMutation]);
+
+  // Save profile locally
+  useEffect(() => {
     storageHelper.set('user_profile', profile);
-  }, [preferences, profile]);
+  }, [profile]);
 
   const updatePreference = <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => {
     setPreferences(prev => ({ ...prev, [key]: value }));
@@ -119,7 +170,7 @@ export const SettingsPage = ({ theme, setTheme, onLogout }: SettingsPageProps) =
             </div>
             <div className="p-4 bg-slate-50 dark:bg-slate-900/50">
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                💡 Dataset mode is determined by your account role. Contact your administrator to change datasets.
+                Dataset mode is determined by your account role. Contact your administrator to change datasets.
               </p>
             </div>
           </Card>
@@ -151,7 +202,7 @@ export const SettingsPage = ({ theme, setTheme, onLogout }: SettingsPageProps) =
             </div>
             <div className="p-4 bg-slate-50 dark:bg-slate-900/50">
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                💡 Changes are saved automatically to localStorage. Backend integration required for server-side persistence.
+                Profile changes are saved locally. Preferences sync to the server when available.
               </p>
             </div>
           </Card>
@@ -318,7 +369,7 @@ export const SettingsPage = ({ theme, setTheme, onLogout }: SettingsPageProps) =
 
             <div className="p-4 bg-slate-50 dark:bg-slate-900/50">
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                ⚠️ Email and desktop notifications require backend integration
+                Email and desktop notifications require backend integration.
               </p>
             </div>
           </Card>

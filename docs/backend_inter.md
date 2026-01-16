@@ -1,4 +1,4 @@
-# Backend Integration Plan - ITSM Nexus
+﻿# Backend Integration Plan - ITSM Nexus
 
 ## Overview
 
@@ -8,26 +8,26 @@ Integration plan for connecting ITSM Nexus frontend to Supabase backend with dem
 
 ### Dataset Separation Strategy
 
-- **Two Roles**: `demo` and `prod`
-- **User Mapping**: One-to-one (demo users → demo data, prod users → prod data)
-- **Data Isolation**: Strictly isolated, no cross-dataset queries or analytics
-- **User Management**: Pre-created by admin (no self-registration)
-- **Role Status**: ⚠️ **Not currently implemented** - `user_metadata.role` exists but not enforced; plan includes hook for future role-based access
+- Two Roles: `demo` and `prod`
+- User Mapping: One-to-one (demo users -> demo data, prod users -> prod data)
+- Data Isolation: Strictly isolated, no cross-dataset queries or analytics
+- User Management: Pre-created by admin (no self-registration)
+- Role Status: Not currently enforced; `user_metadata.role` exists but is not validated against requests
 
 ### Backend Components
 
-- **Frontend**: Next.js 16 + React 19 (port 3001 or dev server)
-- **Backend API**: Existing FastAPI service on port 8001 (search/causal analysis focused)
-  - **Search endpoints**: `/search/hybrid`, `/search/causal`
-  - **Health/utility**: `/health`, `/embeddings/count`
-  - **TODO**: REST CRUD endpoints for `/api/tickets`, `/api/analytics`, etc. (need to be built or extended)
-- **ServiceNow Pipeline**: Existing pipeline that creates/reads/updates tickets in Supabase
-  - Production data synced from ServiceNow → `incidents` table
-  - All CRUD operations must route through backend to normalize schema and trigger pipeline
-- **Supabase**: Local Docker instance
-  - Kong Gateway: <http://localhost:8000>
-  - Supabase Studio: <http://localhost:3000>
-  - Database: PostgreSQL with pgvector extension + two datasets (`incidents` prod, `servicenow_demo` demo)
+- Frontend: Next.js 16 + React 19 (port 3001 or dev server)
+- Backend API: FastAPI service on port 8001
+  - Search endpoints: `/search/hybrid`, `/search/causal`
+  - Health/utility: `/health`, `/embeddings/count`
+  - REST endpoints: `/api/tickets`, `/api/analytics`, `/api/causal-graph`, etc.
+- ServiceNow Pipeline: Existing pipeline that creates/reads/updates tickets in Supabase
+  - Production data synced from ServiceNow `incidents` table
+  - Writes should route through backend to normalize schema and trigger pipeline
+- Supabase: Local Docker instance
+  - Kong Gateway: http://localhost:8000
+  - Supabase Studio: http://localhost:3000
+  - Database: PostgreSQL with pgvector + two datasets (`incidents` prod, `servicenow_demo` demo)
 
 ## Supabase Configuration
 
@@ -39,38 +39,79 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9...
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8001
 ```
 
-### Database Schema (To Be Audited)
+### Database Schema (Audited)
 
-Expected structure (pending audit):
+#### Production Table: `incidents`
 
-#### Demo Schema (`public_demo` or table prefix)
+- `id` (integer, PK)
+- `number` (text)
+- `short_description` (text)
+- `description` (text)
+- `service` (text)
+- `service_offering` (text)
+- `category` (text)
+- `subcategory` (text)
+- `assignment_group` (text)
+- `state` (text)
+- `priority` (text)
+- `opened_at` (timestamp)
+- `resolved_at` (timestamp)
+- `embedding` (vector, 768-dim)
+- `processed_text` (text)
+- `created_at` (timestamp)
+- `updated_at` (timestamp)
+- `fts` (tsvector)
 
-- `tickets` - Demo incident data
-- `graph_nodes` - Causal graph nodes
-- `graph_edges` - Causal relationships
-- `user_preferences` - User settings
-- `feedback_search` - Search feedback
-- `feedback_causal` - Graph validation feedback
+Row count: 10,000+ (production ServiceNow data)
 
-#### Production Schema (`public_prod` or table prefix)
+#### Demo Table: `servicenow_demo`
 
-- Same table structure as demo
-- Contains 10,633+ real ServiceNow incidents
-- Production analytics data
+- `sys_id` (text, PK)
+- `incident_number` (text)
+- `short_description` (text)
+- `description` (text)
+- `state` (text)
+- `priority` (text)
+- `impact` (text)
+- `urgency` (text)
+- `caller_id` (text)
+- `assigned_to` (text)
+- `assignment_group` (text)
+- `category` (text)
+- `subcategory` (text)
+- `sys_created_on` (timestamp)
+- `sys_updated_on` (timestamp)
+- `sys_created_by` (text)
+- `sys_updated_by` (text)
+- `opened_at` (timestamp)
+- `resolved_at` (timestamp)
+- `closed_at` (timestamp)
+- `close_code` (text)
+- `close_notes` (text)
+- `resolution_code` (text)
+- `resolution_notes` (text)
+- `work_notes` (text)
+- `comments` (text)
+- `business_service` (text)
+- `cmdb_ci` (text)
+- `raw` (jsonb)
+- `embedding` (vector, 768-dim)
 
-### Row-Level Security (RLS) Policies
+Row count: ~50-100 demo records
 
-```sql
--- Demo users can only access demo data
-CREATE POLICY "demo_users_demo_data" ON public_demo.tickets
-  FOR ALL
-  USING (auth.jwt() ->> 'role' = 'demo');
+#### Other Tables
 
--- Prod users can only access prod data  
-CREATE POLICY "prod_users_prod_data" ON public_prod.tickets
-  FOR ALL
-  USING (auth.jwt() ->> 'role' = 'prod');
-```
+- `source` (unknown)
+- `audit_log` (audit trail)
+
+#### RPC Functions
+
+- `hybrid_search_incidents` (hybrid search)
+- `match_incidents` (vector similarity)
+
+### RLS Policies
+
+Not audited yet. Plan is to enforce role-based access by JWT role claim.
 
 ## Authentication Flow
 
@@ -80,7 +121,7 @@ CREATE POLICY "prod_users_prod_data" ON public_prod.tickets
 {
   "email": "admin@admin.com",
   "user_metadata": {
-    "role": "demo", // or "prod"
+    "role": "demo",
     "full_name": "Demo Admin",
     "team": "Support Analyst"
   }
@@ -98,692 +139,159 @@ CREATE POLICY "prod_users_prod_data" ON public_prod.tickets
 
 ## API Integration
 
-### Recommended Approach: Backend API Layer (Option 2)
+### Recommended Approach: Backend API Layer
 
-**Why not direct Supabase?**
-- ServiceNow pipeline requires backend mediation (create/read/update flows through service)
-- Schema normalization needed (`incidents` vs `servicenow_demo` have different field names)
-- Role-based access control (when implemented) must be enforced server-side, not client-side
-- Keeps Supabase credentials server-side (secure)
-- Frontend unaware of data source changes (mock → Supabase → ServiceNow)
-
-**Architecture:**
-- Frontend always calls backend API `/api/*` endpoints (do NOT query Supabase directly)
-- Backend owns data source routing:
-  - `demo` dataset → `servicenow_demo` table or mock fallback
-  - `prod` dataset → `incidents` table + ServiceNow pipeline for creates/updates
-- Backend normalizes schemas to unified `Ticket` shape before returning to frontend
-- React Query hooks in frontend remain unchanged; they're data-source agnostic
+Frontend always calls backend `/api/*` endpoints. Backend handles:
+- Dataset routing by `X-Dataset` header (with query param fallback)
+- Schema normalization
+- ServiceNow pipeline integration for writes
 
 ### Request Flow
 
 ```
-Component (SearchPage)
-  ↓
-React Query Hook (useTickets)
-  ↓
-API Service (src/services/api.ts) → adds X-Dataset header
-  ↓
-Backend API (localhost:8001/api/tickets)
-  ↓
-Backend determines dataset (demo|prod) from X-Dataset header or JWT role
-  ↓
-Query Supabase (incidents or servicenow_demo table)
-  ↓
-Call ServiceNow pipeline if WRITE operation (create/update)
-  ↓
-Normalize schema fields (id, number, etc.)
-  ↓
-Return unified Ticket JSON → Cache → Render
+Component
+  -> React Query hook
+  -> API Service (adds X-Dataset header)
+  -> Backend API (localhost:8001/api/*)
+  -> Backend chooses dataset (demo/prod)
+  -> Query Supabase table
+  -> Normalize schema
+  -> Return unified Ticket JSON
 ```
 
 ### API Request Format
 
 ```typescript
-// Preferred: Header-based dataset routing
 GET http://localhost:8001/api/tickets?limit=10
 Headers: {
   'Authorization': 'Bearer <jwt>',
-  'X-Dataset': 'demo'  // or 'prod'
-}
-
-// Alternative: Query parameter (fallback if header not supported)
-GET http://localhost:8001/api/tickets?dataset=demo&limit=10
-Headers: {
-  'Authorization': 'Bearer <jwt>'
+  'X-Dataset': 'demo'
 }
 ```
 
-### Backend API Endpoints (Need to Implement/Extend)
+## Backend API Endpoints (Need to Implement/Extend)
 
-**Current Status:** Backend only has `/search/*` endpoints; CRUD endpoints missing.
+**Current Status (verified against `supabase/api_service_production.py`):**
+Search + analytics + tickets are implemented and dataset-aware, but some endpoints are stubs or missing.
 
 **Required Endpoints:**
-- `GET /api/tickets` - List tickets with filters (dataset-aware)
-- `GET /api/tickets/:id` - Single ticket details
-- `POST /api/tickets` - Create ticket (routes to ServiceNow pipeline for prod)
-- `PATCH /api/tickets/:id` - Update ticket (routes to ServiceNow pipeline for prod)
-- `GET /api/analytics/metrics` - KPI metrics (dataset-aware)
-- `GET /api/analytics/team-performance` - Team stats
-- `POST /api/search/hybrid` - Already exists; add dataset routing
-- `POST /api/search/causal` - Already exists; add dataset routing
-- `GET /api/graph/causal-analysis` - Root cause graph
-- `POST /api/feedback/graph` - Graph validation feedback
-- `GET /api/user/preferences` - User settings
-- `PUT /api/user/preferences` - Update settings
-- `POST /api/export/csv` - Export data
+- `GET /api/tickets` - List tickets with filters (dataset-aware) DONE
+- `GET /api/tickets/:id` - Single ticket details DONE
+- `POST /api/tickets` - Create ticket (routes to ServiceNow pipeline for prod) DONE (direct DB insert; pipeline integration still needed)
+- `PATCH /api/tickets/:id` - Update ticket (routes to ServiceNow pipeline for prod) STUB (echo only; no persistence)
+- `GET /api/tickets/:id/timeline` - Ticket timeline STUB (hardcoded)
+- `GET /api/tickets/:id/audit` - Audit log STUB (hardcoded)
+- `GET /api/analytics/metrics` - KPI metrics (dataset-aware) DONE (avg resolution time computed)
+- `GET /api/analytics/volume` - Volume over time DONE
+- `GET /api/analytics/team-performance` - Team stats DONE
+- `GET /api/analytics/heatmap` - Creation heatmap DONE
+- `GET /api/analytics/priority-breakdown` - Priority distribution DONE
+- `GET /api/analytics/sla-compliance` - SLA compliance proxy DONE
+- `POST /api/search/hybrid` - Dataset-aware DONE
+- `POST /api/search/causal` - Dataset-aware DONE
+- `GET /api/causal-graph/:ticketId` - Root cause graph DONE
+- `POST /api/feedback/graph` - Graph validation feedback DONE (stores if table exists)
+- `POST /api/feedback/graph/flag-incorrect` - Flag incorrect graph DONE (stores if table exists)
+- `GET /api/user/preferences` - User settings DONE (fallback defaults if table missing)
+- `PUT /api/user/preferences` - Update settings DONE (stores if table exists)
+- `POST /api/export/csv` - Export data DONE
 
 ## Frontend Changes Required
 
 ### 1. Auth Store (`src/stores/authStore.ts`)
 
-```typescript
-export interface AuthStore {
-  user: AuthUser | null;
-  datasetMode: 'demo' | 'prod'; // NEW
-  isLoading: boolean;
-  error: string | null;
-  
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-  restoreSession: () => Promise<void>;
-}
-
-// In login():
-const { data, error } = await signIn(email, password);
-const role = data.user?.user_metadata?.role || 'prod';
-set({ 
-  user: convertedUser, 
-  datasetMode: role === 'demo' ? 'demo' : 'prod' // NEW
-});
-```
+- Extract `user_metadata.role` on login/restore
+- Persist `datasetMode` in state
 
 ### 2. API Service (`src/services/api.ts`)
 
-```typescript
-const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
-  const { user, datasetMode } = useAuthStore.getState();
-  
-  const headers = {
-    ...options.headers,
-    'Authorization': `Bearer ${session?.access_token}`,
-    'X-Dataset': datasetMode, // NEW
-  };
-  
-  return fetch(`${API_BASE_URL}${url}`, { ...options, headers });
-};
-```
+- Send `X-Dataset` header on all API requests
 
 ### 3. React Query Cache Keys
 
-```typescript
-// Before
-export const useTickets = (filters) => {
-  return useQuery({
-    queryKey: ['tickets', filters],
-    // ...
-  });
-};
-
-// After
-export const useTickets = (filters) => {
-  const { datasetMode } = useAuthStore();
-  return useQuery({
-    queryKey: ['tickets', datasetMode, filters], // Include dataset
-    // ...
-  });
-};
-```
+- Include `datasetMode` in cache keys for data isolation
 
 ### 4. Settings Page (`src/features/settings/SettingsPage.tsx`)
 
-```tsx
-export const SettingsPage = ({ theme, setTheme, onLogout }) => {
-  const { user, datasetMode } = useAuthStore();
-  
-  return (
-    <div>
-      {/* Existing settings */}
-      
-      {/* NEW: Dataset Indicator */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Dataset Information</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Current Dataset</p>
-              <p className="text-sm text-slate-500">
-                {datasetMode === 'demo' ? 'Demo Dataset' : 'Production Dataset'}
-              </p>
-            </div>
-            <Badge variant={datasetMode === 'demo' ? 'secondary' : 'default'}>
-              {datasetMode.toUpperCase()}
-            </Badge>
-          </div>
-          <p className="text-xs text-slate-400 mt-2">
-            Logged in as: {user?.email}
-          </p>
-        </CardContent>
-      </Card>
-    </div>
-  );
-};
-```
-
-### 5. Root App State (`src/app/page.tsx`)
-
-```typescript
-function App() {
-  const { user, datasetMode, restoreSession } = useAuthStore();
-  
-  // datasetMode automatically derived from user.role
-  // No manual toggle needed
-  
-  return (
-    <QueryProvider>
-      {!user ? (
-        <LoginPage />
-      ) : (
-        <div>
-          <Sidebar activePage={activePage} setActivePage={setActivePage} />
-          {/* Pass datasetMode to features if needed */}
-        </div>
-      )}
-    </QueryProvider>
-  );
-}
-```
+- Dataset indicator shown in UI
 
 ## Implementation Steps
 
-### Phase 1: Database Audit (Current Step)
+### Phase 1: Database Audit
 
-- [ ] Connect to Supabase Studio (<http://localhost:3000>)
-- [ ] Document existing schemas/tables
-- [ ] Check demo vs. prod data separation
-- [ ] Verify user accounts and roles in Auth tab
-- [ ] Confirm RLS policies exist
-- [ ] Document row counts and sample data
+- Connect to Supabase Studio
+- Document schemas/tables
+- Verify demo vs prod separation
+- Check user accounts and roles
+- Confirm RLS policies
 
 ### Phase 2: Frontend Integration
 
-- [ ] Update `authStore.ts` to extract and store `datasetMode`
-- [ ] Modify `api.ts` to include dataset in requests
-- [ ] Update all React Query hooks to include `datasetMode` in cache keys
-- [ ] Add dataset indicator to Settings page
-- [ ] Test login with demo user (verify demo data loads)
-- [ ] Test login with prod user (verify prod data loads)
+- Auth store updates (datasetMode)
+- API service adds dataset header
+- React Query cache keys include datasetMode
+- Settings page dataset indicator
+- Test login with demo/prod users
 
 ### Phase 3: Backend Verification
 
-- [ ] Verify backend API (port 8001) handles dataset routing
-- [ ] Test API endpoints with `X-Dataset` header
-- [ ] Confirm RLS policies block cross-dataset access
-- [ ] Test all features: Search, Analytics, Root Cause, Settings
+- Confirm dataset routing in backend
+- Test endpoints with `X-Dataset`
+- Confirm RLS policies block cross-dataset
+- Test search, analytics, root cause, settings
 
 ### Phase 4: Testing & Validation
 
-- [ ] End-to-end test: Demo user workflow
-- [ ] End-to-end test: Prod user workflow
-- [ ] Verify data isolation (no leakage)
-- [ ] Test logout → login with different role
-- [ ] Performance test with production dataset (10k+ tickets)
+- End-to-end test demo user
+- End-to-end test prod user
+- Verify data isolation
 
 ## Current Status
 
-### ✅ Completed
+### Completed
 
 - Supabase Docker instance running
 - Frontend authentication working
-- Demo user created: `admin@admin.com`
 - Environment variables configured
 - Backend API exists on port 8001
+- Dataset routing implemented in backend
+- API service sends `X-Dataset` header
+- React Query keys include datasetMode
 
-### 🔄 In Progress
+### In Progress
 
-- Database schema audit (next step)
-- Dataset routing implementation
+- Demo user setup (role metadata)
+- Dataset authorization (JWT role vs X-Dataset)
 
-### ⏳ Pending
+### Pending
 
-- Auth store updates
-- API service modifications
-- React Query cache key updates
-- Settings page UI additions
-- End-to-end testing
-
-## Database Audit Findings
-
-### Schemas
-
-- **Single `public` schema** (not separated by `public_demo` and `public_prod`)
-- Dataset separation achieved via **separate tables**: `incidents` (prod) and `servicenow_demo` (demo)
-
-### Tables
-
-#### Production Table: `incidents`
-
-**Columns:**
-
-- `id` (integer, PK)
-- `number` (text) - ServiceNow ticket number (e.g., "INC0045677")
-- `short_description` (text) - Brief summary (truncated in DB)
-- `description` (text) - Full incident details
-- `service` (text) - Service category (e.g., "Mulesoft/EAI")
-- `service_offering` (text) - Sub-service
-- `category` (text) - Main category (e.g., "Application/Software")
-- `subcategory` (text) - Sub-category (e.g., "Job failure")
-- `assignment_group` (text) - Assigned team (e.g., "PISCAP L2 Mulesoft/SOA")
-- `state` (text) - Ticket state (e.g., "Closed", "New")
-- `priority` (text) - Priority level (e.g., "4 - Low", "3 - Moderate")
-- `opened_at` (timestamp) - Creation date
-- `resolved_at` (timestamp) - Resolution date
-- `embedding` (vector) - **768-dimensional pgvector embedding** for semantic search
-- `processed_text` (text) - Preprocessed text for search
-- `created_at` (timestamp) - DB record creation
-- `updated_at` (timestamp) - DB record update
-- `fts` (tsvector) - Full-text search index
-
-**Row Count:** 10,000+ records (production ServiceNow data)
-
-**Sample Record:**
-
-- `number`: "INC0045677"
-- `category`: "Application/Software"  
-- `priority`: "4 - Low"
-- `state`: "Closed"
-- `assignment_group`: "PISCAP L2 Mulesoft/SOA"
-- `embedding`: 768-dimensional vector (MPNet model output)
-
-#### Demo Table: `servicenow_demo`
-
-**Columns:**
-
-- `sys_id` (text, PK) - ServiceNow GUID
-- `incident_number` (text) - Demo ticket number (e.g., "INC0010046")
-- `short_description` (text) - Brief summary
-- `description` (text) - Full description
-- `state` (text) - Ticket state ("New", "In Progress", etc.)
-- `priority` (text) - Priority ("3 - Moderate", etc.)
-- `impact` (text) - Impact level ("1 - High", etc.)
-- `urgency` (text) - Urgency level ("3 - Low", etc.)
-- `caller_id` (text) - Reporter name
-- `assigned_to` (text) - Assignee name
-- `assignment_group` (text) - Assigned team
-- `category` (text) - Category ("Inquiry / Help", etc.)
-- `subcategory` (text) - Sub-category
-- `sys_created_on` (timestamp) - Created date
-- `sys_updated_on` (timestamp) - Updated date
-- `sys_created_by` (text) - Creator username
-- `sys_updated_by` (text) - Last updater
-- `opened_at` (timestamp) - Opened timestamp
-- `resolved_at` (timestamp) - Resolved timestamp
-- `closed_at` (timestamp) - Closed timestamp
-- `close_code` (text) - Close code
-- `close_notes` (text) - Close notes
-- `resolution_code` (text) - Resolution code
-- `resolution_notes` (text) - Resolution notes
-- `work_notes` (text) - Internal notes
-- `comments` (text) - Public comments
-- `business_service` (text) - Business service
-- `cmdb_ci` (text) - Configuration item
-- `raw` (jsonb) - Raw ServiceNow JSON response
-- `embedding` (vector) - **768-dimensional pgvector embedding**
-
-**Row Count:** 50-100 demo records (estimated)
-
-**Sample Record:**
-
-- `incident_number`: "INC0010046"
-- `short_description`: "Access Rights Restriction"
-- `category`: "Inquiry / Help"
-- `priority`: "3 - Moderate"
-- `state`: "New"
-- `caller_id`: "Melinda Carleton"
-- `embedding`: 768-dimensional vector
-
-#### Other Tables
-
-- `source` - Unknown structure (appears in API schema)
-- `audit_log` - Audit trail (columns: id, table_name, operation, record_id, changed_by, changed_at, old_data, new_data)
-
-#### RPC Functions
-
-- `hybrid_search_incidents` - Semantic + FTS hybrid search
-- `match_incidents` - Vector similarity search
-
-### User Accounts
-
-**Verified:**
-
-- `admin@admin.com` (created, role TBD - need to check user_metadata)
-
-**Missing:**
-
-- No demo vs. prod role metadata found yet (need to query Supabase Auth directly)
-
-### RLS Policies
-
-**Status:** Not audited yet
-
-- Need to check Supabase Studio → Database → RLS section
-- Assumption: RLS policies route based on JWT `role` claim
-
-### Data Structure Differences
-
-#### Key Differences Between `incidents` vs. `servicenow_demo`
-
-| Field | `incidents` (Prod) | `servicenow_demo` (Demo) | Notes |
-|-------|-------------------|-------------------------|-------|
-| **ID** | `id` (integer) | `sys_id` (text GUID) | Different primary key types |
-| **Ticket Number** | `number` | `incident_number` | Same concept, different names |
-| **Impact/Urgency** | ❌ Not present | ✅ `impact`, `urgency` | Demo has more ServiceNow fields |
-| **Caller Info** | ❌ Not present | ✅ `caller_id` | Demo tracks reporter |
-| **Raw JSON** | ❌ Not present | ✅ `raw` (jsonb) | Demo preserves original data |
-| **Service Fields** | ✅ `service`, `service_offering` | ❌ `business_service` | Different service models |
-| **Embedding** | ✅ 768-dim vector | ✅ 768-dim vector | Both support semantic search |
-
-### Data Samples
-
-#### Production (`incidents`) Sample
-
-```json
-{
-  "id": 4710,
-  "number": "INC0045677",
-  "short_description": "Dear Team Error occurred while processing the EDI transaction...",
-  "category": "Application/Software",
-  "subcategory": "Job failure",
-  "priority": "4 - Low",
-  "state": "Closed",
-  "assignment_group": "PISCAP L2 Mulesoft/SOA",
-  "service": "Mulesoft/EAI",
-  "embedding": "[0.0028617098,-0.052869648,...]" // 768 dimensions
-}
-```
-
-#### Demo (`servicenow_demo`) Sample
-
-```json
-{
-  "sys_id": "003d252b0f7cb210b7006dd530d1b299",
-  "incident_number": "INC0010046",
-  "short_description": "Access Rights Restriction",
-  "description": "Merchant reported being unable to e-sign...",
-  "category": "Inquiry / Help",
-  "priority": "3 - Moderate",
-  "impact": "1 - High",
-  "urgency": "3 - Low",
-  "state": "New",
-  "caller_id": "Melinda Carleton",
-  "assignment_group": "Incident Management",
-  "embedding": "[0.0014301051,0.00263926,...]" // 768 dimensions
-}
-```
+- Replace direct DB insert in POST `/api/tickets` with ServiceNow pipeline integration
+- Implement ServiceNow pipeline integration for PATCH `/api/tickets/:id`
+- Replace timeline/audit stubs with real data
+- Create DB tables if feedback/preferences persistence is required
 
 ## Notes & Decisions
 
-### Decision Log
+### Key Decisions
 
-1. **Dataset Separation**: Using separate tables (`incidents` vs `servicenow_demo`) NOT separate schemas
-2. **Role Naming**: Using `demo` and `prod` (not `production`) for brevity
-3. **User Creation**: Pre-created by admin to control access
-4. **Dataset Toggle**: Read-only indicator (auto-routed by role), not user-selectable
-5. **Integration Approach**: ✅ **Backend API Layer (Option 2)** - Recommended
-   - Frontend always calls backend `/api/*` endpoints (NOT Supabase directly)
-   - Backend owns data source routing and ServiceNow pipeline mediation
-   - Keeps sensitive logic and credentials server-side
-   - Schema normalization handled by backend before response
-
-### ServiceNow Pipeline Integration
-
-**Current State:**
-- ✅ ServiceNow pipeline exists for creating/reading/updating tickets
-- ✅ Production data synced to `incidents` table
-- ✅ Backend API (port 8001) operational with search endpoints
-
-**Integration Points:**
-- **Create**: Frontend → POST `/api/tickets` → Backend routes to ServiceNow pipeline → writes to `incidents` table
-- **Read**: Frontend → GET `/api/tickets` → Backend queries `incidents` (prod) or `servicenow_demo` (demo) → normalizes schema → returns
-- **Update**: Frontend → PATCH `/api/tickets/:id` → Backend routes to ServiceNow pipeline → updates `incidents` table
-- **Search**: Frontend → POST `/api/search/hybrid` or `/search/causal` → Backend leverages existing ML pipeline (no ServiceNow call needed)
-
-**Schema Normalization Responsibility:**
-Backend must normalize:
-- `incidents.id` (int) → `Ticket.id` (string)
-- `servicenow_demo.sys_id` → `Ticket.id` (string)
-- `incidents.number` → `Ticket.number`
-- `servicenow_demo.incident_number` → `Ticket.number`
-- Optional fields (impact, urgency, caller_id, service, service_offering) mapped to null if not available
-
-### Role-Based Access Control (Future)
-
-**Current Status:** ⚠️ **Not implemented**
-- `user_metadata.role` field exists but not enforced
-- `admin@admin.com` has role metadata but no authorization gates in place
-- No RLS policies active yet
-
-**Future Implementation:**
-1. Activate Supabase RLS policies on `incidents` and `servicenow_demo` tables
-2. Backend validates `role` claim in JWT token from Supabase Auth
-3. Only allow demo role to query `servicenow_demo`; only prod role to query `incidents`
-4. Enforce in both backend code and RLS policies (defense in depth)
-5. Demo users cannot create/update (read-only for demo dataset)
-
-**Placeholder for roles:**
-```typescript
-// In authStore.ts - ready for role extraction
-const role = user.user_metadata?.role || 'prod'; // Defaults to prod if missing
-```
-
-### Critical Schema Incompatibilities
-
-#### Problem: Different Column Names
-
-- Prod uses `number`, Demo uses `incident_number`
-- Prod uses `id` (integer), Demo uses `sys_id` (text GUID)
-- Demo has `impact`/`urgency`, Prod does not
-- Demo has `caller_id`, Prod does not
-- Prod has `service`/`service_offering`, Demo has `business_service`
-
-#### Solution: Backend API Normalization
-
-Backend API (port 8001) must:
-
-1. Query correct table based on dataset mode
-2. Normalize column names to unified schema
-3. Return consistent JSON structure to frontend
-
-**Example API Response (normalized):**
-
-```json
-{
-  "id": "4710",  // or "003d252b0f7cb210b7006dd530d1b299"
-  "number": "INC0045677",  // mapped from 'number' or 'incident_number'
-  "short_description": "...",
-  "description": "...",
-  "category": "Application/Software",
-  "priority": "4 - Low",
-  "state": "Closed",
-  "assignment_group": "...",
-  // Optional fields (null if not available)
-  "service": "Mulesoft/EAI",  // from prod.service or demo.business_service
-  "impact": null,  // only from demo
-  "urgency": null,  // only from demo
-  "caller_id": null,  // only from demo
-  "opened_at": "2025-10-30T21:44:01+00:00",
-  "resolved_at": null
-}
-```
+1. Dataset separation via tables (`incidents` vs `servicenow_demo`)
+2. Role names: `demo` and `prod`
+3. Dataset mode derived from `user_metadata.role` (no manual toggle)
+4. Backend owns schema normalization
+5. Demo dataset is read-only
 
 ### Known Limitations
 
-- No self-registration (users must be pre-created)
-- No cross-dataset analytics for admins
-- No role switching without logout/re-login
-- Dataset mode tied to user account (not session preference)
-- **Schema mismatch** between prod and demo tables requires backend normalization
-- **Roles not yet enforced** - plan leaves hook for future implementation
-- **CRUD endpoints not yet built** - only search endpoints exist; `/api/tickets`, `/api/analytics` endpoints need to be implemented
-- Demo dataset is read-only (cannot create/update); all writes go to prod via ServiceNow pipeline
+- No self-registration
+- Dataset authorization not enforced yet
+- Demo write operations blocked in backend
+- Timeline/audit endpoints are placeholders
 
-### Future Enhancements (Out of Scope)
+## Remaining Work
 
-- Multi-role support (analyst, admin, viewer)
-- Cross-dataset reporting for admins
-- User management UI for creating demo/prod accounts
-- Audit logs for dataset access
-- Schema migration to unify `incidents` and `servicenow_demo` structures
-- Demo write capability (currently read-only for testing)
-
-## References
-
-- Frontend Architecture: `.github/copilot-instructions.md`
-- API Hooks: `src/services/api.ts`
-- Auth Store: `src/stores/authStore.ts`
-- Type Definitions: `src/types/index.ts`
-- Mock Data Structure: `src/data/mockTickets.ts`
-- Supabase Setup: `docs/SUPABASE_SETUP.md`
-
----
-
-## Summary & Next Steps
-
-### ✅ Database Audit & Architecture Complete
-
-**Key Findings:**
-
-1. **Two separate tables**: `incidents` (prod, 10k+ records) and `servicenow_demo` (demo, ~50-100 records)
-2. **Schema mismatch**: Different column names between prod and demo tables
-3. **pgvector enabled**: Both tables have 768-dimensional embeddings for semantic search
-4. **Backend API exists**: Port 8001 has search endpoints; CRUD endpoints need to be built
-5. **User accounts**: `admin@admin.com` created (roles not yet enforced)
-6. **ServiceNow Pipeline**: Exists for creating/reading/updating tickets in prod
-7. **Recommended Approach**: **Backend API Layer** - All frontend calls go through `/api/*` endpoints
-
-### 🚧 Current Integration Status (Jan 15, 2026) - UPDATED
-
-**Backend Completed:**
-- ✅ Search hooks wired to `/search/hybrid` and `/search/causal` (POST)
-- ✅ Backend response normalization (`BackendSearchResult` → `Ticket`)
-- ✅ Causal search hook added (`useCausalSearch`)
-- ✅ `/api/*` endpoint stubs created (tickets, analytics) - **NOW DATASET-AWARE**
-- ✅ `normalize_incident_to_ticket()` handles both `incidents` and `servicenow_demo` schemas
-- ✅ **JWT validation middleware added** (optional, `REQUIRE_AUTH=true` to enforce)
-- ✅ **`fetch_all_incidents()` accepts `dataset` parameter**
-- ✅ **`/search/hybrid` extracts X-Dataset header and routes to correct table**
-- ✅ **`/search/causal` passes dataset context through pipeline**
-
-**Frontend Completed:**
-- ✅ Auth store extracts `user_metadata.role` (lines 82-83, 127-128, 186-187 in authStore.ts)
-- ✅ Auth store maintains `datasetMode: 'demo' | 'prod'` state (line 22)
-- ✅ API service sends `X-Dataset` header on all requests (line 24 in api.ts)
-- ✅ All React Query cache keys include `datasetMode`
-- ✅ **SearchPage.tsx wired to `useSemanticSearch` and `useTickets` hooks**
-- ✅ **RootCauseAnalysisPage.tsx wired to `useCausalGraph` hook** (mock fallback removed - uses live API)
-- ✅ **DashboardPage.tsx wired to `useTickets` and `useAnalyticsMetrics` hooks**
-- ✅ **GraphCanvas.tsx updated to receive edges as prop (not hardcoded)**
-
-**Remaining Gaps:**
-- ✅ `/api/causal-graph/{ticketId}` endpoint **IMPLEMENTED** (Jan 16, 2026) - Uses `/search/causal` with sigmoid-normalized confidence scores
-- ✅ Analytics endpoints use **REAL SQL queries** (mock fallback only if DB connection fails)
-- ⚠️ `servicenow_demo` table may not have embeddings for vector search
-
-**Why Integration Is Now Usable:**
-With dataset awareness in both frontend and backend, the system will:
-1. Extract user role on login → set `datasetMode`
-2. Send `X-Dataset` header on API calls
-3. Backend routes to correct table (`incidents` or `servicenow_demo`)
-4. Schema differences handled by `normalize_incident_to_ticket()`
-
-### 🎯 Revised Implementation Plan - PROGRESS UPDATE
-
-**Phase 2A: Frontend Dataset Context - ✅ COMPLETED**
-
-1. ✅ **Auth Store** - Already extracts `user_metadata.role` and maintains `datasetMode`
-2. ✅ **API Service** - Already sends `X-Dataset` header and includes in cache keys
-3. ✅ **Frontend Pages** - SearchPage, DashboardPage, RootCauseAnalysisPage all wired to API hooks
-
-**Phase 2B: Backend Dataset Routing - ✅ COMPLETED**
-
-1. ✅ **Dataset Context Extraction** - `get_dataset_mode()` reads X-Dataset header with query param fallback
-2. ✅ **Schema Normalizer** - `normalize_incident_to_ticket()` handles both table schemas
-3. ✅ **`/api/tickets` Endpoints** - Already dataset-aware via `get_dataset_mode()`
-4. ⚠️ **`/api/analytics/*` Endpoints** - Need real SQL queries (currently mock)
-5. ✅ **Search Endpoints** - `/search/hybrid` and `/search/causal` now dataset-aware
-
-**Phase 2C: Auth & Validation - ✅ COMPLETED**
-
-1. ✅ **JWT Validation** - `validate_jwt_token()` added with `REQUIRE_AUTH` env toggle
-2. ⚠️ **Dataset Authorization** - Not yet enforced (JWT role vs X-Dataset header)
-
-**Phase 2D: Integration Testing - ✅ COMPLETE (except demo user)**
-
-1. ⬜ Create demo user in Supabase with `role: 'demo'`
-2. ⬜ Test login → verify `datasetMode` extracted correctly (requires demo user)
-3. ✅ Test `/api/tickets` → **VERIFIED** (prod: 10,633 tickets, demo: 76 tickets)
-4. ✅ Test search → **VERIFIED** (dataset routing works)
-5. ✅ Test analytics → **VERIFIED** (real SQL queries, dataset-aware)
-6. ✅ Test causal graph → **VERIFIED** (with sigmoid-normalized confidence scores)
-
-**Remaining Work:**
-- ✅ ~~Implement real SQL queries for analytics endpoints~~ **DONE** (already using real queries)
-- ✅ ~~Add `/api/causal-graph/{ticketId}` endpoint for RootCause page~~ **DONE** (Jan 16, 2026)
-- ✅ End-to-end testing of demo/prod dataset routing **DONE** (Jan 16, 2026)
-- ⏳ Create demo user account in Supabase (~10 mins)
-- ⏳ Enable `REQUIRE_AUTH=true` for production (~5 mins)
-
-**Estimated Remaining: ~15 mins**
-
-### 📋 Key Decisions & Open Questions
-
-**Decisions Made:**
-1. ✅ Use `X-Dataset` header (primary) with query param fallback
-2. ✅ Demo dataset is **read-only** (no create/update)
-3. ✅ Backend owns schema normalization (frontend receives unified `Ticket` shape)
-4. ✅ ServiceNow pipeline integration for prod writes only
-5. ✅ Default to `prod` dataset if `user_metadata.role` missing
-
-**Open Questions:**
-1. **Auth timing**: Validate JWT in Phase 2C or defer to Phase 3?
-   - **Recommendation**: Phase 2C (security baseline)
-2. **RLS policies**: Implement alongside JWT or as separate phase?
-   - **Recommendation**: Phase 3 (defense in depth after basic auth works)
-3. **Demo user account**: Need to create `demo@demo.com` with `role: 'demo'` metadata
-   - **Action**: Create in Supabase Studio before testing
-4. **ServiceNow pipeline**: What's the exact integration point for backend create/update?
-   - **Action**: Document pipeline API/SDK usage
-5. **Error handling**: How should demo users be notified of read-only restriction?
-   - **Recommendation**: 403 with message "Demo dataset is read-only"
-
----
-
-**✅ Phase 2A-2C Completed (Jan 15, 2026)**
-**✅ Phase 2D Partially Completed (Jan 16, 2026)**
-
-### Bug Fixes Applied (Jan 16, 2026)
-
-1. **Backend - Causal Score Normalization**
-   - **Issue**: Cross-encoder returned raw logits (e.g., 4.94), backend multiplied by 100 = 494%
-   - **Fix**: Applied sigmoid normalization: `causal_score = 1 / (1 + np.exp(-raw_score))`
-   - **File**: `supabase/api_service_production.py` (lines 1527-1550)
-
-2. **Frontend - Graph Physics NaN/Infinity Guards**
-   - **Issue**: Extreme confidence values caused Infinity in force calculations
-   - **Fix**: Added force/velocity clamping and NaN guards
-   - **File**: `nexustism_frontend_new/src/features/root-cause/hooks/useGraphPhysics.ts`
-
-3. **Frontend - GraphCanvas Position Validation**
-   - **Issue**: Nodes rendered before positions initialized
-   - **Fix**: Added defensive checks to skip rendering invalid positions
-   - **File**: `nexustism_frontend_new/src/features/root-cause/components/GraphCanvas.tsx`
-
-### Remaining Before Production
-
-- [ ] Create demo user account in Supabase with `user_metadata.role = 'demo'`
-- [x] ~~Implement real SQL queries for analytics endpoints~~ **DONE** (already using real queries)
-- [x] ~~Add `/api/causal-graph/{ticketId}` endpoint~~ **DONE**
-- [x] ~~End-to-end testing with demo and prod users~~ **DONE** (prod verified, demo routing verified)
-- [ ] Set `REQUIRE_AUTH=true` to enforce JWT validation in production
+- Create demo user account in Supabase with `user_metadata.role = 'demo'`
+- Enable `REQUIRE_AUTH=true` to enforce JWT validation in production
+- Create tables for persistence if needed: `feedback_graph`, `feedback_graph_flags`, `user_preferences`
+- Replace placeholder timeline/audit and update stubs with real data
+- Enforce dataset authorization using JWT role vs `X-Dataset` header
+- Replace direct DB insert in POST `/api/tickets` with ServiceNow pipeline integration
