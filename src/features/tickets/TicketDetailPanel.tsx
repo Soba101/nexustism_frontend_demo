@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Share2, Download, Network } from 'lucide-react';
 import type { Ticket } from '@/types';
 import { exportToCSV } from '@/utils/helpers';
@@ -19,23 +19,31 @@ interface TicketDetailPanelProps {
   addToast: (msg: string, type: 'success' | 'info' | 'error') => void;
 }
 
-export const TicketDetailPanel = ({
+interface TicketDetailPanelContentProps extends Omit<TicketDetailPanelProps, 'ticket'> {
+  ticket: Ticket;
+}
+
+export const TicketDetailPanel = (props: TicketDetailPanelProps) => {
+  if (!props.ticket) return null;
+
+  return (
+    <TicketDetailPanelContent
+      key={props.ticket.number}
+      {...props}
+      ticket={props.ticket}
+    />
+  );
+};
+
+const TicketDetailPanelContent = ({
   ticket,
   isOpen,
   onClose,
   onAnalyze,
   onSelectRelated,
   addToast
-}: TicketDetailPanelProps) => {
+}: TicketDetailPanelContentProps) => {
   const [activeTab, setActiveTab] = useState('overview');
-  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
-
-  useEffect(() => {
-    setActiveTab('overview');
-    setFeedback(null);
-  }, [ticket]);
-
-  if (!ticket) return null;
 
   return (
     <>

@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react';
 import { Badge as ShadcnBadge } from '@/components/ui/badge';
 
 interface BadgeProps {
@@ -7,7 +8,8 @@ interface BadgeProps {
 }
 
 export const Badge = ({ children, variant = 'default', className = '' }: BadgeProps) => {
-  const variantMap: Record<string, any> = {
+  type ShadcnVariant = NonNullable<ComponentProps<typeof ShadcnBadge>['variant']>;
+  const variantMap: Record<NonNullable<BadgeProps['variant']>, ShadcnVariant> = {
     default: 'secondary',
     critical: 'destructive',
     high: 'default',

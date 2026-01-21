@@ -1,6 +1,19 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type User } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const resolveSupabaseUrl = () => {
+  const localUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const tailscaleUrl = process.env.NEXT_PUBLIC_SUPABASE_URL_TAILSCALE || '';
+
+  if (typeof window === 'undefined') {
+    return localUrl || tailscaleUrl;
+  }
+
+  const host = window.location.hostname;
+  const isLocalhost = host === 'localhost' || host === '127.0.0.1';
+  return isLocalhost ? (localUrl || tailscaleUrl) : (tailscaleUrl || localUrl);
+};
+
+const supabaseUrl = resolveSupabaseUrl();
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -16,13 +29,17 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+const clearAuthStorage = () => {
+  if (typeof window === 'undefined') return;
+  const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-'));
+  keys.forEach(k => localStorage.removeItem(k));
+};
+
 // Handle auth errors globally - clear invalid sessions on sign out
 if (typeof window !== 'undefined') {
   supabase.auth.onAuthStateChange((event) => {
     if (event === 'SIGNED_OUT') {
-      // Clear any stale auth data from localStorage
-      const keys = Object.keys(localStorage).filter(k => k.startsWith('sb-'));
-      keys.forEach(k => localStorage.removeItem(k));
+      clearAuthStorage();
     }
   });
 }
@@ -33,7 +50,14 @@ if (typeof window !== 'undefined') {
 export const getSession = async () => {
   try {
     const { data, error } = await supabase.auth.getSession();
-    if (error) throw error;
+    if (error) {
+      if (error.message.includes('Refresh Token')) {
+        await supabase.auth.signOut({ scope: 'local' });
+        clearAuthStorage();
+        return null;
+      }
+      throw error;
+    }
     return data.session;
   } catch (error) {
     console.error('Failed to get session:', error);
@@ -60,7 +84,7 @@ export const signIn = async (email: string, password: string) => {
 export const signUp = async (
   email: string,
   password: string,
-  options?: { data?: Record<string, any> }
+  options?: { data?: Record<string, unknown> }
 ) => {
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -77,7 +101,14 @@ export const signUp = async (
  */
 export const signOut = async () => {
   const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+  if (error) {
+    if (error.message.includes('Refresh Token')) {
+      await supabase.auth.signOut({ scope: 'local' });
+      clearAuthStorage();
+      return;
+    }
+    throw error;
+  }
 };
 
 /**
@@ -89,7 +120,8 @@ export const getCurrentUser = async () => {
     if (error) {
       // Handle invalid refresh token by signing out
       if (error.message.includes('Refresh Token')) {
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: 'local' });
+        clearAuthStorage();
         return null;
       }
       // Session missing is expected when user is not logged in
@@ -114,7 +146,7 @@ export const getCurrentUser = async () => {
 /**
  * Listen to auth state changes
  */
-export const onAuthStateChange = (callback: (user: any) => void) => {
+export const onAuthStateChange = (callback: (user: User | null) => void) => {
   return supabase.auth.onAuthStateChange(async (event, session) => {
     callback(session?.user || null);
   });

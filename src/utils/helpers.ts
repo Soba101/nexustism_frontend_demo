@@ -7,12 +7,18 @@
  * @param data Array of objects to export
  * @param filename Name of the file to download
  */
-export const exportToCSV = (data: any[], filename: string) => {
+export const exportToCSV = <T extends object>(data: T[], filename: string) => {
   if (!data || !data.length) return;
-  const headers = Object.keys(data[0]).join(',');
-  const rows = data.map(obj => Object.values(obj).map(v => 
-    typeof v === 'string' && v.includes(',') ? `"${v}"` : v // Handle commas in strings
-  ).join(','));
+  const headers = Object.keys(data[0] as Record<string, unknown>).join(',');
+  const rows = data.map(obj => Object.values(obj as Record<string, unknown>).map((value) => {
+    if (value === null || value === undefined) return '';
+    const text = typeof value === 'string'
+      ? value
+      : typeof value === 'object'
+        ? JSON.stringify(value)
+        : String(value);
+    return text.includes(',') ? `"${text}"` : text;
+  }).join(','));
   const csvContent = [headers, ...rows].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -100,7 +106,9 @@ export const highlightSearchTerms = (text: string, searchTerm: string): string =
  * @param func Function to debounce
  * @param delay Delay in milliseconds
  */
-export const debounce = <T extends (...args: any[]) => any>(
+type AnyFunction = (...args: unknown[]) => void;
+
+export const debounce = <T extends AnyFunction>(
   func: T,
   delay: number
 ): ((...args: Parameters<T>) => void) => {

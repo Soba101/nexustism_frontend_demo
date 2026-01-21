@@ -1,76 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuthStore, useInitializeAuth } from '@/stores/authStore';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { WebVitalsReporter } from '@/components/WebVitalsReporter';
-import { 
-  Search, 
-  Filter, 
-  LayoutDashboard, 
-  Network, 
-  Settings, 
-  Bell, 
-  ChevronRight, 
-  ChevronLeft,
-  Clock, 
-  CheckCircle2, 
-  AlertCircle, 
-  X, 
-  ThumbsUp, 
-  ThumbsDown, 
-  Share2, 
-  Download,
-  Activity,
-  History,
-  FileText,
-  User as UserIcon,
-  Menu,
-  MoreHorizontal,
-  ArrowUpRight,
-  ArrowDownRight,
-  TrendingUp,
-  BarChart3,
-  LogOut,
-  Moon,
-  Globe,
-  Shield,
-  Sun,
-  Calendar,
-  Lock,
-  Mail,
-  ZoomIn,
-  ZoomOut,
-  Move,
-  Maximize,
-  Info,
-  PieChart,
-  GitCommit,
-  AlertTriangle,
-  Star,
-  ToggleLeft,
-  ToggleRight,
-  Sliders,
-  Image as ImageIcon,
-  Layout,
-  Languages,
-  MousePointer2
-} from 'lucide-react';
-
-// Import types and data from new modular structure
-import type { Ticket, User as UserType, GraphNode, GraphEdge, TicketPriority, TicketState } from '@/types';
-import { MOCK_TICKETS, GRAPH_NODES as RAW_NODES, GRAPH_EDGES } from '@/data/mockTickets';
-import { exportToCSV, getPriorityVariant } from '@/utils/helpers';
-import { AreaChart, SimpleLineChart, DonutChart } from '@/components/charts/Charts';
-import { branding } from '@/config/branding';
-
-// Import shadcn/ui components
-import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
+import type { Ticket } from '@/types';
 
 // Import feature components
 import { LoginPage } from '@/features/auth';
@@ -83,9 +17,6 @@ import { DashboardPage } from '@/features/dashboard';
 // Lazy load heavy features
 const AnalyticsPage = lazy(() => import('@/features/analytics').then(mod => ({ default: mod.AnalyticsPage })));
 const RootCauseAnalysisPage = lazy(() => import('@/features/root-cause').then(mod => ({ default: mod.RootCauseAnalysisPage })));
-
-// Type alias for User
-type User = UserType;
 
 /**
  * Loading Spinner Component
@@ -201,7 +132,6 @@ function App() {
           <PageWrapper setIsMobileOpen={setIsMobileOpen}>
             <Suspense fallback={<LoadingSpinner />}>
               <RootCauseAnalysisPage 
-                setActivePage={setActivePage} 
                 addToast={addToast}
                 targetTicket={selectedTicketForAnalysis}
               />
@@ -223,7 +153,7 @@ function App() {
               try {
                 await useAuthStore.getState().logout();
                 addToast('Logged out successfully', 'info');
-              } catch (error) {
+              } catch {
                 addToast('Failed to logout', 'error');
               }
             }} />

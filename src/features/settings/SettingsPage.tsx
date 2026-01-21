@@ -1,11 +1,11 @@
 ﻿"use client";
 
-import { useState, useEffect, useRef } from 'react';
-import { Globe, Sun, Moon, Languages, LogOut, User, Bell, Search as SearchIcon, Gauge, Download, Type, Eye, Database } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Globe, Sun, Moon, Languages, LogOut, User, Bell, Search as SearchIcon, Download, Eye, Database } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { storageHelper, exportToCSV } from '@/utils/helpers';
+import { storageHelper } from '@/utils/helpers';
 import { useAuthStore } from '@/stores/authStore';
 import { useUserPreferences, useUpdateUserPreferences } from '@/services/api';
 import type { UserPreferences } from '@/types';
@@ -36,50 +36,79 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   uiDensity: 'comfortable'
 };
 
+const mergePreferences = (
+  base: UserPreferences,
+  overrides?: Partial<UserPreferences>
+): UserPreferences => {
+  if (!overrides) {
+    return base;
+  }
+  return {
+    ...DEFAULT_PREFERENCES,
+    ...base,
+    ...overrides,
+    notifications: {
+      ...DEFAULT_PREFERENCES.notifications,
+      ...base.notifications,
+      ...overrides.notifications,
+    },
+    accessibility: {
+      ...DEFAULT_PREFERENCES.accessibility,
+      ...base.accessibility,
+      ...overrides.accessibility,
+    },
+  };
+};
+
 export const SettingsPage = ({ theme, setTheme, onLogout }: SettingsPageProps) => {
+  const { data: preferencesData, dataUpdatedAt } = useUserPreferences();
+  const preferencesSeed = useMemo(() => {
+    const stored = storageHelper.get('user_preferences', DEFAULT_PREFERENCES);
+    return mergePreferences(stored, preferencesData ?? undefined);
+  }, [preferencesData]);
+  const profileSeed = useMemo(
+    () => storageHelper.get('user_profile', { name: 'Admin User', email: 'admin@nexus.ai' }),
+    []
+  );
+
+  return (
+    <SettingsPageContent
+      key={preferencesData ? dataUpdatedAt : 'local'}
+      theme={theme}
+      setTheme={setTheme}
+      onLogout={onLogout}
+      preferencesSeed={preferencesSeed}
+      profileSeed={profileSeed}
+    />
+  );
+};
+
+interface SettingsPageContentProps extends SettingsPageProps {
+  preferencesSeed: UserPreferences;
+  profileSeed: { name: string; email: string };
+}
+
+const SettingsPageContent = ({
+  theme,
+  setTheme,
+  onLogout,
+  preferencesSeed,
+  profileSeed,
+}: SettingsPageContentProps) => {
   const { user, datasetMode } = useAuthStore();
-  const { data: preferencesData } = useUserPreferences();
   const updatePreferencesMutation = useUpdateUserPreferences();
   const saveTimeoutRef = useRef<number | null>(null);
-  const syncingFromServerRef = useRef(false);
+  const skipSyncRef = useRef(true);
 
-  const [preferences, setPreferences] = useState<UserPreferences>(() =>
-    storageHelper.get('user_preferences', DEFAULT_PREFERENCES)
-  );
-  
-  const [profile, setProfile] = useState(() => 
-    storageHelper.get('user_profile', { name: 'Admin User', email: 'admin@nexus.ai' })
-  );
-
-  // Apply server preferences when available
-  useEffect(() => {
-    if (!preferencesData) {
-      return;
-    }
-    syncingFromServerRef.current = true;
-    setPreferences((prev) => ({
-      ...DEFAULT_PREFERENCES,
-      ...prev,
-      ...preferencesData,
-      notifications: {
-        ...DEFAULT_PREFERENCES.notifications,
-        ...prev.notifications,
-        ...preferencesData.notifications,
-      },
-      accessibility: {
-        ...DEFAULT_PREFERENCES.accessibility,
-        ...prev.accessibility,
-        ...preferencesData.accessibility,
-      },
-    }));
-  }, [preferencesData]);
+  const [preferences, setPreferences] = useState<UserPreferences>(() => preferencesSeed);
+  const [profile, setProfile] = useState(() => profileSeed);
 
   // Save preferences to localStorage and backend (debounced)
   useEffect(() => {
     storageHelper.set('user_preferences', preferences);
 
-    if (syncingFromServerRef.current) {
-      syncingFromServerRef.current = false;
+    if (skipSyncRef.current) {
+      skipSyncRef.current = false;
       return;
     }
 
@@ -113,7 +142,10 @@ export const SettingsPage = ({ theme, setTheme, onLogout }: SettingsPageProps) =
     }));
   };
 
-  const updateAccessibility = (key: keyof UserPreferences['accessibility'], value: any) => {
+  const updateAccessibility = <K extends keyof UserPreferences['accessibility']>(
+    key: K,
+    value: UserPreferences['accessibility'][K]
+  ) => {
     setPreferences(prev => ({
       ...prev,
       accessibility: { ...prev.accessibility, [key]: value }
@@ -282,7 +314,7 @@ export const SettingsPage = ({ theme, setTheme, onLogout }: SettingsPageProps) =
               <select 
                 className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm rounded-md px-2 py-1 text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
                 value={preferences.dateFormat}
-                onChange={(e) => updatePreference('dateFormat', e.target.value as any)}
+                onChange={(e) => updatePreference('dateFormat', e.target.value as UserPreferences['dateFormat'])}
               >
                 <option value="MM/DD/YYYY">MM/DD/YYYY</option>
                 <option value="DD/MM/YYYY">DD/MM/YYYY</option>
@@ -389,7 +421,7 @@ export const SettingsPage = ({ theme, setTheme, onLogout }: SettingsPageProps) =
               <select 
                 className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm rounded-md px-2 py-1 text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
                 value={preferences.defaultPage}
-                onChange={(e) => updatePreference('defaultPage', e.target.value as any)}
+                onChange={(e) => updatePreference('defaultPage', e.target.value as UserPreferences['defaultPage'])}
               >
                 <option value="search">Search</option>
                 <option value="analyze">Root Cause Analysis</option>
@@ -406,7 +438,7 @@ export const SettingsPage = ({ theme, setTheme, onLogout }: SettingsPageProps) =
               <select 
                 className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm rounded-md px-2 py-1 text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-blue-500"
                 value={preferences.itemsPerPage}
-                onChange={(e) => updatePreference('itemsPerPage', Number(e.target.value) as any)}
+                onChange={(e) => updatePreference('itemsPerPage', Number(e.target.value) as UserPreferences['itemsPerPage'])}
               >
                 <option value={5}>5 per page</option>
                 <option value={10}>10 per page</option>

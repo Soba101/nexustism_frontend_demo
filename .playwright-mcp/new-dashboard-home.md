@@ -1,0 +1,160 @@
+### Page state
+- Page URL: http://localhost:3000/
+- Page Title: ITSM Nexus - AI-Powered Ticket Management
+- Page Snapshot:
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e32]:
+    - generic [ref=e33]:
+      - generic [ref=e35]:
+        - img [ref=e37]
+        - generic [ref=e39]: ITSM Nexus
+      - navigation [ref=e40]:
+        - button "Dashboard" [ref=e41]:
+          - img [ref=e42]
+          - generic [ref=e47]: Dashboard
+        - button "Search Tickets" [ref=e48]:
+          - img [ref=e49]
+          - generic [ref=e52]: Search Tickets
+        - button "Root Cause Analysis" [ref=e53]:
+          - img [ref=e54]
+          - generic [ref=e59]: Root Cause Analysis
+        - button "Analytics" [ref=e60]:
+          - img [ref=e61]
+          - generic [ref=e63]: Analytics
+        - button "Settings" [ref=e64]:
+          - img [ref=e65]
+          - generic [ref=e68]: Settings
+      - generic [ref=e70]:
+        - generic [ref=e71]: JS
+        - generic [ref=e72]:
+          - paragraph [ref=e73]: Jane Smith
+          - paragraph [ref=e74]: L2 Support Lead
+    - generic [ref=e76]:
+      - generic [ref=e77]:
+        - heading "Dashboard Overview" [level=1] [ref=e78]
+        - paragraph [ref=e79]: Welcome back! Here's what's happening with your tickets.
+      - generic [ref=e81]:
+        - generic [ref=e82]:
+          - img [ref=e83]
+          - textbox "Quick search tickets..." [ref=e86]
+        - button "Search" [ref=e87]
+        - button "Advanced Search" [ref=e88]
+      - generic [ref=e89]:
+        - generic [ref=e90]:
+          - generic [ref=e91]:
+            - img [ref=e93]
+            - generic [ref=e95]:
+              - img [ref=e96]
+              - generic [ref=e99]: +12%
+          - paragraph [ref=e100]: Total Tickets
+          - paragraph [ref=e101]: "7"
+        - generic [ref=e102]:
+          - generic [ref=e103]:
+            - img [ref=e105]
+            - generic [ref=e108]: 71%
+          - paragraph [ref=e109]: Open Tickets
+          - paragraph [ref=e110]: "5"
+        - generic [ref=e111]:
+          - generic [ref=e112]:
+            - img [ref=e114]
+            - generic [ref=e117]: 14%
+          - paragraph [ref=e118]: Critical
+          - paragraph [ref=e119]: "1"
+        - generic [ref=e120]:
+          - generic [ref=e121]:
+            - img [ref=e123]
+            - generic [ref=e126]:
+              - img [ref=e127]
+              - generic [ref=e130]: +8%
+          - paragraph [ref=e131]: Resolved
+          - paragraph [ref=e132]: "1"
+      - generic [ref=e133]:
+        - generic [ref=e134]:
+          - generic [ref=e135]:
+            - heading "Recent Tickets" [level=2] [ref=e136]
+            - button "View All" [ref=e137]
+          - generic [ref=e138]:
+            - generic [ref=e139] [cursor=pointer]:
+              - generic [ref=e140]:
+                - generic [ref=e141]: TKT001052
+                - generic [ref=e142]: High
+              - paragraph [ref=e143]: VPN connection failing for remote users in SG office
+              - generic [ref=e144]:
+                - generic [ref=e145]: Network
+                - generic [ref=e146]: •
+                - generic [ref=e147]: New
+            - generic [ref=e148] [cursor=pointer]:
+              - generic [ref=e149]:
+                - generic [ref=e150]: TKT001048
+                - generic [ref=e151]: Medium
+              - paragraph [ref=e152]: Outlook keeps prompting for password after 2FA
+              - generic [ref=e153]:
+                - generic [ref=e154]: Software
+                - generic [ref=e155]: •
+                - generic [ref=e156]: In Progress
+            - generic [ref=e157] [cursor=pointer]:
+              - generic [ref=e158]:
+                - generic [ref=e159]: TKT000985
+                - generic [ref=e160]: Medium
+              - paragraph [ref=e161]: Singapore VPN Gateway high latency
+              - generic [ref=e162]:
+                - generic [ref=e163]: Network
+                - generic [ref=e164]: •
+                - generic [ref=e165]: Resolved
+            - generic [ref=e166] [cursor=pointer]:
+              - generic [ref=e167]:
+                - generic [ref=e168]: TKT000821
+                - generic [ref=e169]: High
+              - paragraph [ref=e170]: Unable to connect to VPN (Error 800)
+              - generic [ref=e171]:
+                - generic [ref=e172]: Network
+                - generic [ref=e173]: •
+                - generic [ref=e174]: Closed
+            - generic [ref=e175] [cursor=pointer]:
+              - generic [ref=e176]:
+                - generic [ref=e177]: TKT001055
+                - generic [ref=e178]: Critical
+              - paragraph [ref=e179]: SAP ERP Login extremely slow during report generation
+              - generic [ref=e180]:
+                - generic [ref=e181]: Software
+                - generic [ref=e182]: •
+                - generic [ref=e183]: New
+        - generic [ref=e184]:
+          - generic [ref=e185]:
+            - heading "Needs Attention" [level=2] [ref=e186]
+            - generic [ref=e187]: "3"
+          - generic [ref=e188]:
+            - generic [ref=e189] [cursor=pointer]:
+              - generic [ref=e190]:
+                - generic [ref=e191]: TKT001052
+                - generic [ref=e192]: High
+              - paragraph [ref=e193]: VPN connection failing for remote users in SG office
+              - generic [ref=e194]:
+                - img [ref=e195]
+                - generic [ref=e198]: Network
+            - generic [ref=e199] [cursor=pointer]:
+              - generic [ref=e200]:
+                - generic [ref=e201]: TKT000821
+                - generic [ref=e202]: High
+              - paragraph [ref=e203]: Unable to connect to VPN (Error 800)
+              - generic [ref=e204]:
+                - img [ref=e205]
+                - generic [ref=e208]: Network
+            - generic [ref=e209] [cursor=pointer]:
+              - generic [ref=e210]:
+                - generic [ref=e211]: TKT001055
+                - generic [ref=e212]: Critical
+              - paragraph [ref=e213]: SAP ERP Login extremely slow during report generation
+              - generic [ref=e214]:
+                - img [ref=e215]
+                - generic [ref=e218]: Software
+      - generic [ref=e220]:
+        - generic [ref=e221]:
+          - heading "AI-Powered Analysis Ready" [level=3] [ref=e222]
+          - paragraph [ref=e223]: Explore root cause relationships and ticket dependencies
+        - button "Open Root Cause Analysis" [ref=e224]
+  - button "Open Next.js Dev Tools" [ref=e27] [cursor=pointer]:
+    - img [ref=e28]
+  - alert [ref=e31]
+```

@@ -1,3 +1,4 @@
+import type { ComponentProps, ComponentType } from 'react';
 import { Button as ShadcnButton } from '@/components/ui/button';
 
 interface ButtonProps {
@@ -6,7 +7,7 @@ interface ButtonProps {
   size?: 'sm' | 'md' | 'lg' | 'icon';
   className?: string;
   onClick?: () => void;
-  icon?: React.ComponentType<any>;
+  icon?: ComponentType<{ className?: string }>;
   disabled?: boolean;
   'aria-label'?: string;
 }
@@ -21,7 +22,9 @@ export const Button = ({
   disabled,
   'aria-label': ariaLabel
 }: ButtonProps) => {
-  const variantMap: Record<string, any> = {
+  type ShadcnVariant = NonNullable<ComponentProps<typeof ShadcnButton>['variant']>;
+  type ShadcnSize = NonNullable<ComponentProps<typeof ShadcnButton>['size']>;
+  const variantMap: Record<NonNullable<ButtonProps['variant']>, ShadcnVariant> = {
     primary: 'default',
     secondary: 'secondary',
     outline: 'outline',
@@ -29,7 +32,7 @@ export const Button = ({
     danger: 'destructive'
   };
 
-  const sizeMap: Record<string, any> = {
+  const sizeMap: Record<NonNullable<ButtonProps['size']>, ShadcnSize> = {
     sm: 'sm',
     md: 'default',
     lg: 'lg',

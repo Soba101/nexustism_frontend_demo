@@ -1,12 +1,25 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { supabase, getSession } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
-import type { Ticket, GraphNode, GraphEdge } from '@/types';
+import type { Ticket, GraphNode, GraphEdge, UserPreferences } from '@/types';
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  'http://localhost:8001';
+const resolveApiBaseUrl = () => {
+  const localUrl =
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    'http://localhost:8001';
+  const tailscaleUrl = process.env.NEXT_PUBLIC_API_BASE_URL_TAILSCALE || '';
+
+  if (typeof window === 'undefined') {
+    return localUrl || tailscaleUrl;
+  }
+
+  const host = window.location.hostname;
+  const isLocalhost = host === 'localhost' || host === '127.0.0.1';
+  return isLocalhost ? (localUrl || tailscaleUrl) : (tailscaleUrl || localUrl);
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 /**
  * Generic fetch wrapper with error handling
@@ -15,8 +28,8 @@ async function fetchAPI<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const session = await getSession();
+  const token = session?.access_token;
   const datasetMode = useAuthStore.getState().datasetMode;
 
   const headers: Record<string, string> = {
@@ -63,12 +76,30 @@ type BackendSearchResult = {
   causal_score?: number;
 };
 
+type TicketTimelineEntry = Record<string, unknown>;
+type TicketAuditEntry = Record<string, unknown>;
+type TeamPerformanceEntry = {
+  name: string;
+  resolved?: number;
+  inProgress?: number;
+  new?: number;
+};
+type HeatmapCell = {
+  day: number;
+  hour: number;
+  count: number;
+};
+
 type HybridSearchResponse = {
   results: BackendSearchResult[];
   query_original: string;
   query_expanded?: string;
   total_candidates: number;
   reranking_enabled: boolean;
+  total?: number;
+  offset?: number;
+  limit?: number;
+  has_more?: boolean;
 };
 
 const mapSearchResultToTicket = (result: BackendSearchResult): Ticket => {
@@ -104,7 +135,16 @@ export const useTickets = (filters?: {
 }) => {
   const { datasetMode } = useAuthStore();
   return useQuery({
-    queryKey: ['tickets', datasetMode, filters],
+    queryKey: [
+      'tickets',
+      datasetMode,
+      filters?.category ?? null,
+      filters?.priority ?? null,
+      filters?.state ?? null,
+      filters?.search ?? null,
+      filters?.page ?? null,
+      filters?.limit ?? null,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filters?.category) params.append('category', filters.category);
@@ -138,7 +178,7 @@ export const useTicketTimeline = (ticketId: string) => {
   return useQuery({
     queryKey: ['ticket', datasetMode, ticketId, 'timeline'],
     queryFn: () =>
-      fetchAPI<any[]>(`/api/tickets/${ticketId}/timeline`),
+      fetchAPI<TicketTimelineEntry[]>(`/api/tickets/${ticketId}/timeline`),
     staleTime: 2 * 60 * 1000,
     enabled: !!ticketId,
   });
@@ -149,7 +189,7 @@ export const useTicketAuditLog = (ticketId: string) => {
   return useQuery({
     queryKey: ['ticket', datasetMode, ticketId, 'audit'],
     queryFn: () =>
-      fetchAPI<any[]>(`/api/tickets/${ticketId}/audit`),
+      fetchAPI<TicketAuditEntry[]>(`/api/tickets/${ticketId}/audit`),
     staleTime: 2 * 60 * 1000,
     enabled: !!ticketId,
   });
@@ -219,43 +259,43 @@ export const useAnalyticsVolume = (period: '7d' | '30d' | '90d' = '30d') => {
   });
 };
 
-export const useAnalyticsTeamPerformance = () => {
+export const useAnalyticsTeamPerformance = (period: '7d' | '30d' | '90d' = '30d') => {
   const { datasetMode } = useAuthStore();
   return useQuery({
-    queryKey: ['analytics', datasetMode, 'team-performance'],
+    queryKey: ['analytics', datasetMode, 'team-performance', period],
     queryFn: () =>
-      fetchAPI<any[]>(`/api/analytics/team-performance`),
+      fetchAPI<TeamPerformanceEntry[]>(`/api/analytics/team-performance?period=${period}`),
     staleTime: 10 * 60 * 1000,
   });
 };
 
-export const useAnalyticsHeatmap = (period: '7d' | '30d' = '30d') => {
+export const useAnalyticsHeatmap = (period: '7d' | '30d' | '90d' = '30d') => {
   const { datasetMode } = useAuthStore();
   return useQuery({
     queryKey: ['analytics', datasetMode, 'heatmap', period],
     queryFn: () =>
-      fetchAPI<any[]>(`/api/analytics/heatmap?period=${period}`),
+      fetchAPI<HeatmapCell[]>(`/api/analytics/heatmap?period=${period}`),
     staleTime: 10 * 60 * 1000,
   });
 };
 
-export const useAnalyticsPriorityBreakdown = () => {
+export const useAnalyticsPriorityBreakdown = (period: '7d' | '30d' | '90d' = '30d') => {
   const { datasetMode } = useAuthStore();
   return useQuery({
-    queryKey: ['analytics', datasetMode, 'priority-breakdown'],
+    queryKey: ['analytics', datasetMode, 'priority-breakdown', period],
     queryFn: () =>
-      fetchAPI<Record<string, number>>(`/api/analytics/priority-breakdown`),
+      fetchAPI<Record<string, number>>(`/api/analytics/priority-breakdown?period=${period}`),
     staleTime: 10 * 60 * 1000,
   });
 };
 
-export const useAnalyticsSLACompliance = () => {
+export const useAnalyticsSLACompliance = (period: '7d' | '30d' | '90d' = '30d') => {
   const { datasetMode } = useAuthStore();
   return useQuery({
-    queryKey: ['analytics', datasetMode, 'sla-compliance'],
+    queryKey: ['analytics', datasetMode, 'sla-compliance', period],
     queryFn: () =>
       fetchAPI<{ overall: number; byPriority: Record<string, number> }>(
-        `/api/analytics/sla-compliance`
+        `/api/analytics/sla-compliance?period=${period}`
       ),
     staleTime: 10 * 60 * 1000,
   });
@@ -267,13 +307,14 @@ export const useAnalyticsSLACompliance = () => {
 
 export const useSearchSuggestions = (query: string) => {
   const { datasetMode } = useAuthStore();
+  const trimmedQuery = query.trim();
   return useQuery({
-    queryKey: ['search', datasetMode, 'suggestions', query],
+    queryKey: ['search', datasetMode, 'suggestions', trimmedQuery],
     queryFn: () =>
       fetchAPI<HybridSearchResponse>(`/search/hybrid`, {
         method: 'POST',
         body: JSON.stringify({
-          query,
+          query: trimmedQuery,
           top_k: 5,
           enable_reranking: false,
           enable_query_expansion: true,
@@ -282,20 +323,32 @@ export const useSearchSuggestions = (query: string) => {
         res.results.map((r) => r.short_description || r.number).slice(0, 5)
       ),
     staleTime: 5 * 60 * 1000,
-    enabled: query.trim().length > 1,
+    enabled: trimmedQuery.length > 1,
   });
 };
 
-export const useSemanticSearch = (query: string, filters?: any) => {
+type SemanticSearchFilters = {
+  limit?: number;
+  offset?: number;
+  rerank?: boolean;
+  expand?: boolean;
+};
+
+export const useSemanticSearch = (query: string, filters?: SemanticSearchFilters) => {
   const { datasetMode } = useAuthStore();
+  const limit = filters?.limit ?? 10;
+  const offset = filters?.offset ?? 0;
+  const rerank = filters?.rerank ?? true;
+  const expand = filters?.expand ?? true;
   return useQuery({
-    queryKey: ['search', datasetMode, 'semantic', query, filters],
+    queryKey: ['search', datasetMode, 'semantic', query, limit, offset, rerank, expand],
     queryFn: async () => {
       const payload = {
         query,
-        top_k: filters?.limit ?? 10,
-        enable_reranking: filters?.rerank ?? true,
-        enable_query_expansion: filters?.expand ?? true,
+        top_k: limit,
+        offset,
+        enable_reranking: rerank,
+        enable_query_expansion: expand,
       };
 
       const res = await fetchAPI<HybridSearchResponse>(`/search/hybrid`, {
@@ -308,7 +361,14 @@ export const useSemanticSearch = (query: string, filters?: any) => {
         (r) => r.rerank_score ?? r.similarity_score ?? 0
       );
 
-      return { results: tickets, scores };
+      return {
+        results: tickets,
+        scores,
+        total: res.total ?? res.total_candidates ?? res.results.length,
+        offset: res.offset ?? offset,
+        limit: res.limit ?? limit,
+        has_more: res.has_more ?? false,
+      };
     },
     staleTime: 2 * 60 * 1000,
     enabled: query.trim().length > 0,
@@ -410,7 +470,7 @@ export const useUserPreferences = () => {
   return useQuery({
     queryKey: ['user', 'preferences'],
     queryFn: () =>
-      fetchAPI<any>(`/api/user/preferences`),
+      fetchAPI<UserPreferences>(`/api/user/preferences`),
     staleTime: Infinity, // Doesn't change often
   });
 };
@@ -419,8 +479,8 @@ export const useUpdateUserPreferences = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (preferences: any) =>
-      fetchAPI<any>(`/api/user/preferences`, {
+    mutationFn: (preferences: UserPreferences) =>
+      fetchAPI<UserPreferences>(`/api/user/preferences`, {
         method: 'PUT',
         body: JSON.stringify(preferences),
       }),

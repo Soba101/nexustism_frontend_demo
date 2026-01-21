@@ -1,4 +1,4 @@
-import { MousePointer2, ImageIcon, Move, ZoomOut, ZoomIn, Search, SlidersHorizontal, Hand, Pointer, Download } from 'lucide-react';
+import { Move, ZoomOut, ZoomIn, Search, Hand, Pointer, Download } from 'lucide-react';
 import { Button } from '@/components/ui/wrappers';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
@@ -6,8 +6,6 @@ import { useState } from 'react';
 interface GraphControlsProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  minConfidence: number;
-  onMinConfidenceChange: (value: number) => void;
   interactionMode: 'select' | 'pan';
   onModeChange: (mode: 'select' | 'pan') => void;
   isCtrlPressed: boolean;
@@ -21,8 +19,6 @@ interface GraphControlsProps {
 export const GraphControls = ({ 
   searchQuery, 
   onSearchChange, 
-  minConfidence, 
-  onMinConfidenceChange,
   interactionMode,
   onModeChange,
   isCtrlPressed,
@@ -33,8 +29,6 @@ export const GraphControls = ({
   onDownload 
 }: GraphControlsProps) => {
   const [showExportMenu, setShowExportMenu] = useState(false);
-
-  const effectiveMode = isCtrlPressed ? 'pan' : interactionMode;
 
   return (
     <div className="mb-6 space-y-4">

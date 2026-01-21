@@ -17,6 +17,7 @@ interface SearchPageProps {
 export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: SearchPageProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [suggestionQuery, setSuggestionQuery] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedPriorities, setSelectedPriorities] = useState<TicketPriority[]>([]);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -44,10 +45,15 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Reset to page 1 when filters change
+  // Debounce suggestions separately to reduce backend chatter
   useEffect(() => {
-    setCurrentPage(1);
-  }, [debouncedSearchTerm, selectedCategories, selectedPriorities, statusFilter, dateRange, assignmentFilter]);
+    const timer = setTimeout(() => {
+      setSuggestionQuery(searchTerm);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const resetPage = () => setCurrentPage(1);
 
   // API Hooks - use semantic search when there's a search term, otherwise browse tickets
   const isSemanticSearch = debouncedSearchTerm.trim().length > 0;
@@ -58,7 +64,8 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
     isLoading: isSearchLoading,
     error: searchError,
   } = useSemanticSearch(debouncedSearchTerm, {
-    limit: 50,
+    limit: itemsPerPage,
+    offset: (currentPage - 1) * itemsPerPage,
     rerank: reranking,
     expand: queryExpansion,
   });
@@ -77,7 +84,7 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
   });
 
   // Suggestions hook
-  const { data: suggestions = [] } = useSearchSuggestions(searchTerm);
+  const { data: suggestions = [] } = useSearchSuggestions(suggestionQuery);
 
   // Determine which data source to use
   const isLoading = isSemanticSearch ? isSearchLoading : isTicketsLoading;
@@ -121,6 +128,13 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
     return results;
   }, [rawResults, selectedCategories, selectedPriorities, sortBy]);
 
+  const totalResults = useMemo(() => {
+    if (isSemanticSearch) {
+      return searchData?.total ?? filteredIncidents.length;
+    }
+    return ticketsData?.total ?? filteredIncidents.length;
+  }, [isSemanticSearch, searchData, ticketsData, filteredIncidents.length]);
+
   // Get unique assignment groups from current results
   const assignmentGroups = useMemo(() => {
     const groups = [...new Set(rawResults.map(t => t.assigned_group).filter(Boolean))];
@@ -129,28 +143,39 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
 
   const categories = ['Network', 'Software', 'Hardware', 'Database', 'Access'];
   const priorities: TicketPriority[] = ['Critical', 'High', 'Medium', 'Low'];
+  const priorityVariantMap: Record<TicketPriority, 'destructive' | 'default' | 'secondary' | 'outline'> = {
+    Critical: 'destructive',
+    High: 'default',
+    Medium: 'secondary',
+    Low: 'outline',
+  };
+  const sortOptions = ['relevance', 'date-new', 'date-old', 'priority'] as const;
   
   const toggleCategory = (cat: string) => {
     setSelectedCategories(prev => 
       prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
     );
+    resetPage();
   };
 
   const togglePriority = (priority: TicketPriority) => {
     setSelectedPriorities(prev =>
       prev.includes(priority) ? prev.filter(p => p !== priority) : [...prev, priority]
     );
+    resetPage();
   };
 
   const clearAllFilters = () => {
     setSearchTerm('');
     setDebouncedSearchTerm('');
+    setSuggestionQuery('');
     setSelectedCategories([]);
     setSelectedPriorities([]);
     setStatusFilter('all');
     setAssignmentFilter('all');
     setDateRange('all');
     setSortBy('relevance');
+    resetPage();
     addToast('All filters cleared', 'info');
   };
 
@@ -165,13 +190,19 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
   ].filter(Boolean).length;
 
   // Pagination Logic
-  const totalPages = useMemo(() => Math.ceil(filteredIncidents.length / itemsPerPage), [filteredIncidents.length]);
+  const totalPages = useMemo(() => {
+    if (totalResults <= 0) {
+      return 0;
+    }
+    return Math.ceil(totalResults / itemsPerPage);
+  }, [totalResults, itemsPerPage]);
   
-  const paginatedIncidents = useMemo(() => 
-    filteredIncidents.slice(
-      (currentPage - 1) * itemsPerPage,
-      currentPage * itemsPerPage
-    ), [filteredIncidents, currentPage, itemsPerPage]);
+  const paginatedIncidents = useMemo(() => filteredIncidents, [filteredIncidents]);
+
+  const pageStart = paginatedIncidents.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0;
+  const pageEnd = paginatedIncidents.length > 0
+    ? Math.min(pageStart + paginatedIncidents.length - 1, totalResults)
+    : 0;
 
   return (
     <div className="flex-1 min-h-screen bg-slate-50 dark:bg-slate-950 md:pl-64 transition-all duration-300">
@@ -200,13 +231,16 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
                   placeholder="Describe the issue (e.g., 'VPN timeout error 800')..."
                   className="w-full pl-12 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-base"
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    resetPage();
+                  }}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                   onFocus={() => searchTerm.length > 2 && setShowSuggestions(true)}
                 />
                 
                 {/* Typeahead Suggestions */}
-                {showSuggestions && (
+                {showSuggestions && suggestions.length > 0 && (
                   <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl overflow-hidden z-50">
                     {suggestions.map((suggestion, idx) => (
                       <button 
@@ -214,6 +248,7 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
                         className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm text-slate-700 dark:text-slate-300 flex items-center"
                         onClick={() => {
                           setSearchTerm(suggestion);
+                          resetPage();
                           setShowSuggestions(false);
                         }}
                       >
@@ -237,11 +272,11 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
                 <button 
                   key={cat}
                   onClick={() => toggleCategory(cat)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                    selectedCategories.includes(cat)
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                  }`}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                      selectedCategories.includes(cat)
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                    }`}
                 >
                   {cat}
                 </button>
@@ -254,11 +289,11 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
                 <button 
                   key={priority}
                   onClick={() => togglePriority(priority)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                    selectedPriorities.includes(priority)
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                  }`}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                      selectedPriorities.includes(priority)
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                    }`}
                 >
                   {priority}
                 </button>
@@ -285,19 +320,19 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
               {statusFilter !== 'all' && (
                 <Badge variant="outline" className="flex items-center gap-1">
                   Status: {statusFilter}
-                  <X className="w-3 h-3 cursor-pointer hover:text-red-600" onClick={(e) => { e.stopPropagation(); setStatusFilter('all'); }} />
+                  <X className="w-3 h-3 cursor-pointer hover:text-red-600" onClick={(e) => { e.stopPropagation(); setStatusFilter('all'); resetPage(); }} />
                 </Badge>
               )}
               {assignmentFilter !== 'all' && (
                 <Badge variant="outline" className="flex items-center gap-1">
                   Group: {assignmentFilter}
-                  <X className="w-3 h-3 cursor-pointer hover:text-red-600" onClick={(e) => { e.stopPropagation(); setAssignmentFilter('all'); }} />
+                  <X className="w-3 h-3 cursor-pointer hover:text-red-600" onClick={(e) => { e.stopPropagation(); setAssignmentFilter('all'); resetPage(); }} />
                 </Badge>
               )}
               {dateRange !== 'all' && (
                 <Badge variant="outline" className="flex items-center gap-1">
                   Date: {dateRange}
-                  <X className="w-3 h-3 cursor-pointer hover:text-red-600" onClick={(e) => { e.stopPropagation(); setDateRange('all'); }} />
+                  <X className="w-3 h-3 cursor-pointer hover:text-red-600" onClick={(e) => { e.stopPropagation(); setDateRange('all'); resetPage(); }} />
                 </Badge>
               )}
               <Button variant="ghost" size="sm" onClick={clearAllFilters} className="h-6 text-xs">
@@ -317,14 +352,19 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
                    {isSemanticSearch ? 'AI Searching...' : 'Loading...'}
                  </>
                ) : (
-                 `Found ${filteredIncidents.length} Results`
+                 `Found ${totalResults} Results`
                )}
              </h2>
              <div className="flex items-center space-x-2">
                 <span className="text-sm text-slate-500 dark:text-slate-400">Sort by:</span>
                 <select
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
+                  onChange={(e) => {
+                    const nextValue = e.target.value;
+                    if (sortOptions.includes(nextValue as (typeof sortOptions)[number])) {
+                      setSortBy(nextValue as (typeof sortOptions)[number]);
+                    }
+                  }}
                   className="text-sm font-medium text-slate-900 dark:text-white bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700"
                 >
                   <option value="relevance">Relevance</option>
@@ -381,16 +421,16 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
                      onClick={() => onSelectIncident(incident)}
                    >
                       {/* Ticket Number & Status */}
-                      <div className="col-span-2 flex items-center space-x-2 md:space-x-3 mb-2 md:mb-0">
-                         <span className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-300">{incident.number}</span>
-                         <Badge variant={incident.priority.toLowerCase() as any} className="hidden md:inline-flex">{incident.priority}</Badge>
+                     <div className="col-span-2 flex items-center space-x-2 md:space-x-3 mb-2 md:mb-0">
+                        <span className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-300">{incident.number}</span>
+                        <Badge variant={priorityVariantMap[incident.priority]} className="hidden md:inline-flex">{incident.priority}</Badge>
                       </div>
 
                       {/* Summary */}
                       <div className="col-span-4 mb-2 md:mb-0 pr-4 min-w-0">
                          <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{incident.short_description}</p>
                          <div className="md:hidden mt-1 flex gap-2">
-                            <Badge variant={incident.priority.toLowerCase() as any}>{incident.priority}</Badge>
+                            <Badge variant={priorityVariantMap[incident.priority]}>{incident.priority}</Badge>
                             <span className="text-xs text-slate-500 dark:text-slate-400">{incident.category}</span>
                          </div>
                       </div>
@@ -425,10 +465,10 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
           </div>
 
           {/* Pagination - Outside the card for better visibility */}
-          {filteredIncidents.length > 0 && totalPages > 1 && (
+          {paginatedIncidents.length > 0 && totalPages > 1 && (
             <div className="flex items-center justify-between">
               <div className="text-sm text-slate-500 dark:text-slate-400">
-                Showing {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, filteredIncidents.length)} of {filteredIncidents.length}
+                Showing {pageStart} - {pageEnd} of {totalResults}
               </div>
               <div className="flex items-center space-x-2">
                 <Button 
@@ -470,10 +510,13 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
            <div>
              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Date Range</label>
              <div className="grid grid-cols-2 gap-2">
-                {['All Time', 'Last 7 Days', 'Last 30 Days', 'Custom'].map(label => (
+               {['All Time', 'Last 7 Days', 'Last 30 Days', 'Custom'].map(label => (
                   <button 
                     key={label}
-                    onClick={() => setDateRange(label.toLowerCase())}
+                    onClick={() => {
+                      setDateRange(label.toLowerCase());
+                      resetPage();
+                    }}
                     className={`px-3 py-2 text-sm rounded-md border text-center ${
                        dateRange === label.toLowerCase() 
                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300' 
@@ -492,7 +535,10 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
              <select 
                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                value={statusFilter}
-               onChange={(e) => setStatusFilter(e.target.value)}
+               onChange={(e) => {
+                 setStatusFilter(e.target.value);
+                 resetPage();
+               }}
              >
                 <option value="all">All States</option>
                 <option value="new">New</option>
@@ -507,7 +553,10 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Assignment Group</label>
              <select 
                value={assignmentFilter}
-               onChange={(e) => setAssignmentFilter(e.target.value)}
+               onChange={(e) => {
+                 setAssignmentFilter(e.target.value);
+                 resetPage();
+               }}
                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
              >
                 <option value="all">All Groups</option>
@@ -552,6 +601,7 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
               setAssignmentFilter('all');
               setQueryExpansion(false);
               setReranking(false);
+              resetPage();
             }}>Reset</Button>
             <Button onClick={() => {
               setIsFilterModalOpen(false);

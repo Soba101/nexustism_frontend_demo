@@ -136,10 +136,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         // No session found - user not logged in
         set({ user: null, datasetMode: 'prod' });
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to restore session:', error);
       // If it's a refresh token error, explicitly sign out to clear invalid tokens
-      if (error?.message?.includes('Refresh Token')) {
+      const message = error instanceof Error ? error.message : '';
+      if (message.includes('Refresh Token')) {
         try {
           await signOut();
         } catch {}

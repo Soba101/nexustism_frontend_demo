@@ -1,8 +1,8 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { memo, useMemo } from "react";
-import { Cell, Pie, PieChart, ResponsiveContainer, Funnel, FunnelChart, Tooltip } from "recharts";
+import { Cell, ResponsiveContainer, Funnel, FunnelChart, Tooltip } from "recharts";
 
 // SLA Gauge Chart Component
 interface GaugeChartProps {
@@ -19,8 +19,6 @@ export const GaugeChart = memo(({ value, label = "Compliance", thresholds = { go
   };
 
   const color = getColor(value);
-  const angle = (value / 100) * 180;
-
   return (
     <div className="relative w-full h-48 flex flex-col items-center justify-center">
       <svg viewBox="0 0 200 120" className="w-full h-full">
@@ -55,11 +53,11 @@ export const GaugeChart = memo(({ value, label = "Compliance", thresholds = { go
       <div className="flex gap-4 mt-2 text-xs">
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded-full bg-green-500"></div>
-          <span className="text-slate-600 dark:text-slate-400">≥{thresholds.good}%</span>
+          <span className="text-slate-600 dark:text-slate-400">{thresholds.warning}-{thresholds.good}%</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-          <span className="text-slate-600 dark:text-slate-400">{thresholds.warning}-{thresholds.good}%</span>
+          <span className="text-slate-600 dark:text-slate-400">{thresholds.good}%</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-3 h-3 rounded-full bg-red-500"></div>
@@ -233,8 +231,6 @@ interface StackedBarChartProps {
 }
 
 export const StackedBarChart = memo(({ data, onClick }: StackedBarChartProps) => {
-  const maxTotal = Math.max(...data.map(d => d.resolved + d.inProgress + d.new));
-
   return (
     <div className="space-y-4">
       {data.map((item) => {
@@ -299,3 +295,4 @@ export const StackedBarChart = memo(({ data, onClick }: StackedBarChartProps) =>
 });
 
 StackedBarChart.displayName = 'StackedBarChart';
+

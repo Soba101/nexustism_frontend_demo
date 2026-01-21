@@ -8,15 +8,14 @@ import { useGraphPhysics } from './hooks/useGraphPhysics';
 import { GraphControls } from './components/GraphControls';
 import { GraphCanvas } from './components/GraphCanvas';
 import { NodeDetailPanel } from './components/NodeDetailPanel';
-import { useCausalGraph, useSubmitGraphFeedback } from '@/services/api';
+import { useCausalGraph } from '@/services/api';
 
 interface RootCauseAnalysisPageProps {
-  setActivePage: (page: string) => void;
   addToast: (msg: string, type: 'success' | 'info' | 'error') => void;
   targetTicket?: Ticket | null;
 }
 
-export const RootCauseAnalysisPage = ({ setActivePage, addToast, targetTicket }: RootCauseAnalysisPageProps) => {
+export const RootCauseAnalysisPage = ({ addToast, targetTicket }: RootCauseAnalysisPageProps) => {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -27,7 +26,7 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast, targetTicket }:
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [validation, setValidation] = useState({ rating: 0, confidence: 50, evidence: '' });
   const [searchQuery, setSearchQuery] = useState('');
-  const [minConfidence, setMinConfidence] = useState(0);
+  const minConfidence = 0;
   const [interactionMode, setInteractionMode] = useState<'select' | 'pan'>('select');
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -39,28 +38,37 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast, targetTicket }:
   // API hooks for causal graph data
   // TODO: Backend needs /api/causal-graph/{ticketId} endpoint - using mock data as fallback
   const ticketId = targetTicket?.id || targetTicket?.number || '';
-  const { data: graphData, isLoading: isGraphLoading, error: graphError } = useCausalGraph(ticketId);
-  const submitFeedback = useSubmitGraphFeedback();
+  const { data: graphData, isLoading: isGraphLoading } = useCausalGraph(ticketId);
 
   // Use API data or fall back to mock data
   const graphNodes = useMemo(() => {
-    if (graphData?.nodes && graphData.nodes.length > 0) {
-      return graphData.nodes;
-    }
-    // Fall back to mock data, optionally updating root node with target ticket
-    if (targetTicket) {
-      return RAW_NODES.map(node => {
-        if (node.type === 'root') {
-          return {
-            ...node,
-            label: targetTicket.number,
-            details: `Root Ticket: ${targetTicket.short_description}`
-          };
-        }
-        return node;
-      });
-    }
-    return RAW_NODES;
+    const nodesToUse = graphData?.nodes && graphData.nodes.length > 0
+      ? graphData.nodes
+      : targetTicket
+        ? RAW_NODES.map(node => {
+            if (node.type === 'root') {
+              return {
+                ...node,
+                label: targetTicket.number,
+                details: `Root Ticket: ${targetTicket.short_description}`
+              };
+            }
+            return node;
+          })
+        : RAW_NODES;
+
+    return nodesToUse.map(node => {
+      const detailsText = node.details?.trim() ? node.details : node.label;
+      if (targetTicket && node.type === 'root') {
+        const rootDetails = targetTicket.short_description || detailsText;
+        return {
+          ...node,
+          label: targetTicket.number || node.label,
+          details: `Root Ticket: ${rootDetails}`
+        };
+      }
+      return { ...node, details: detailsText };
+    });
   }, [graphData, targetTicket]);
 
   const graphEdges: GraphEdge[] = useMemo(() => {
@@ -93,11 +101,21 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast, targetTicket }:
 
   // Handle Control key for pan override + keyboard navigation
   useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tagName = target.tagName;
+      if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') return true;
+      if (target.isContentEditable) return true;
+      const role = target.getAttribute('role');
+      return role === 'slider' || role === 'textbox' || role === 'combobox';
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Control') setIsCtrlPressed(true);
-      
+
       // Keyboard navigation for selected node
       if (selectedNode) {
+        if (isEditableTarget(e.target)) return;
         if (e.key === 'Escape') setSelectedNode(null);
         if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
           const currentIndex = nodes.findIndex(n => n.id === selectedNode.id);
@@ -318,8 +336,6 @@ export const RootCauseAnalysisPage = ({ setActivePage, addToast, targetTicket }:
       <GraphControls
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        minConfidence={minConfidence}
-        onMinConfidenceChange={setMinConfidence}
         interactionMode={interactionMode}
         onModeChange={setInteractionMode}
         isCtrlPressed={isCtrlPressed}

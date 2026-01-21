@@ -2,15 +2,24 @@
 
 import * as React from "react";
 import { memo, useMemo } from "react";
-import { Area, AreaChart as RechartsAreaChart, CartesianGrid, Line, LineChart as RechartsLineChart, Pie, PieChart as RechartsPieChart, XAxis, YAxis, ResponsiveContainer, Cell } from "recharts";
+import { Area, AreaChart as RechartsAreaChart, CartesianGrid, Line, LineChart as RechartsLineChart, Pie, PieChart as RechartsPieChart, XAxis, YAxis, Cell } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
+
+type ChartPoint = {
+  day: string;
+  displayDay: string;
+  value: number;
+  index: number;
+};
+
+type RechartsClickState = { activePayload?: Array<{ payload: ChartPoint }> } | null;
 
 // Area Chart Component
 interface AreaChartProps {
   data: number[];
   color?: string;
   labels?: string[];
-  onClick?: (data: any, index: number) => void;
+  onClick?: (data: ChartPoint, index: number) => void;
 }
 
 export const AreaChart = memo(({ data, color = "#10b981", labels, onClick }: AreaChartProps) => {
@@ -28,9 +37,10 @@ export const AreaChart = memo(({ data, color = "#10b981", labels, onClick }: Are
     },
   } satisfies ChartConfig), [color]);
 
-  const handleClick = (data: any) => {
-    if (onClick && data && data.activePayload) {
-      onClick(data.activePayload[0].payload, data.activePayload[0].payload.index);
+  const handleClick = (data: RechartsClickState) => {
+    const payload = data?.activePayload?.[0]?.payload;
+    if (onClick && payload) {
+      onClick(payload, payload.index);
     }
   };
 
@@ -73,7 +83,7 @@ interface SimpleLineChartProps {
   data: number[];
   color?: string;
   labels?: string[];
-  onClick?: (data: any, index: number) => void;
+  onClick?: (data: ChartPoint, index: number) => void;
 }
 
 export const SimpleLineChart = memo(({ data, color = "#3b82f6", labels, onClick }: SimpleLineChartProps) => {
@@ -91,9 +101,10 @@ export const SimpleLineChart = memo(({ data, color = "#3b82f6", labels, onClick 
     },
   } satisfies ChartConfig), [color]);
 
-  const handleClick = (data: any) => {
-    if (onClick && data && data.activePayload) {
-      onClick(data.activePayload[0].payload, data.activePayload[0].payload.index);
+  const handleClick = (data: RechartsClickState) => {
+    const payload = data?.activePayload?.[0]?.payload;
+    if (onClick && payload) {
+      onClick(payload, payload.index);
     }
   };
 
@@ -160,7 +171,7 @@ export const DonutChart = memo(({ data, onClick }: DonutChartProps) => {
     return acc;
   }, {} as ChartConfig), [data]);
 
-  const handleClick = (_: any, index: number) => {
+  const handleClick = (_: unknown, index: number) => {
     setActiveIndex(index);
     if (onClick) {
       onClick(data[index], index);

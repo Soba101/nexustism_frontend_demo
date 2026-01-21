@@ -62,13 +62,16 @@ export const GraphCanvas = ({
 
   // Filter edges by confidence threshold
   const filteredEdges = edges.filter(edge => edge.confidence >= minConfidence / 100);
+  const effectiveMode = isCtrlPressed ? 'pan' : interactionMode;
+  const tooltipHint = effectiveMode === 'pan'
+    ? 'Pan mode active - switch to Select to open'
+    : 'Click for details';
 
   // Determine cursor based on mode and state
   const getCursorClass = () => {
     if (isPanning) return 'cursor-grabbing';
     if (draggedNodeId) return 'cursor-grabbing';
     
-    const effectiveMode = isCtrlPressed ? 'pan' : interactionMode;
     if (effectiveMode === 'pan') return 'cursor-grab';
     return 'cursor-default';
   };
@@ -185,7 +188,7 @@ export const GraphCanvas = ({
           const opacity = searchQuery && !isHighlighted ? 0.2 : 1;
 
           // Node details from mock data
-          const nodeDetails = node.details || node.label;
+          const nodeDetails = node.details?.trim() ? node.details : node.label;
 
           return (
           <g
@@ -278,7 +281,7 @@ export const GraphCanvas = ({
                   textAnchor="middle"
                   className="select-none"
                 >
-                  Type: {node.type.charAt(0).toUpperCase() + node.type.slice(1)} • Click for details
+                  Type: {node.type.charAt(0).toUpperCase() + node.type.slice(1)} - {tooltipHint}
                 </text>
               </g>
             )}

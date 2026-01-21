@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, TrendingUp, Clock, AlertCircle, CheckCircle2, Activity, ArrowUpRight, ArrowDownRight, Users, Ticket as TicketIcon, Loader2 } from 'lucide-react';
+import { Search, Clock, AlertCircle, CheckCircle2, Activity, ArrowUpRight, Ticket as TicketIcon } from 'lucide-react';
 import { useTickets, useAnalyticsMetrics } from '@/services/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,11 +17,10 @@ export const DashboardPage = ({ setActivePage, onSelectIncident, addToast }: Das
   const [quickSearch, setQuickSearch] = useState('');
 
   // API hooks for data
-  const { data: ticketsData, isLoading: isTicketsLoading, error: ticketsError } = useTickets({ limit: 50 });
-  const { data: metricsData, isLoading: isMetricsLoading } = useAnalyticsMetrics('30d');
+  const { data: ticketsData } = useTickets({ limit: 50 });
+  const { data: metricsData } = useAnalyticsMetrics('30d');
 
-  const tickets = ticketsData?.tickets || [];
-  const isLoading = isTicketsLoading || isMetricsLoading;
+  const tickets = useMemo(() => ticketsData?.tickets ?? [], [ticketsData?.tickets]);
 
   // Calculate KPIs from API data
   const kpis = useMemo(() => {
@@ -66,7 +65,7 @@ export const DashboardPage = ({ setActivePage, onSelectIncident, addToast }: Das
             Dashboard Overview
           </h1>
           <p className="text-slate-600 dark:text-slate-400">
-            Welcome back! Here's what's happening with your tickets.
+            Welcome back! Here is what is happening with your tickets.
           </p>
         </div>
 

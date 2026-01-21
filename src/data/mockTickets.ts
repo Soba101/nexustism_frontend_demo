@@ -1,4 +1,4 @@
-import { Ticket, GraphCluster, GraphNode, GraphEdge } from '../types';
+import { Ticket, GraphNode, GraphEdge } from '../types';
 
 /**
  * Mock Data for ITSM Dashboard

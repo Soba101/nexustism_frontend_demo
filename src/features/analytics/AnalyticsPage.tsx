@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  Calendar, Download, FileText, Clock, Search, ArrowUpRight, ArrowDownRight,
-  TrendingUp, PieChart, Activity, BarChart3, Target, Users, Zap, AlertTriangle,
+  Download, FileText, Clock, ArrowUpRight,
+  TrendingUp, PieChart, Activity, Target, Users, Zap, AlertTriangle,
   CheckCircle2, RefreshCw, TrendingDown, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -25,14 +25,15 @@ interface AnalyticsPageProps {
 
 export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
   const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d'>('30d');
+  const periodDays = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : 90;
 
   // Fetch all analytics data from API
   const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics } = useAnalyticsMetrics(selectedPeriod);
   const { data: volume, isLoading: volumeLoading, refetch: refetchVolume } = useAnalyticsVolume(selectedPeriod);
-  const { data: teamPerformance, isLoading: teamLoading, refetch: refetchTeam } = useAnalyticsTeamPerformance();
+  const { data: teamPerformance, isLoading: teamLoading, refetch: refetchTeam } = useAnalyticsTeamPerformance(selectedPeriod);
   const { data: heatmapData, isLoading: heatmapLoading, refetch: refetchHeatmap } = useAnalyticsHeatmap(selectedPeriod);
-  const { data: priorityBreakdown, isLoading: priorityLoading, refetch: refetchPriority } = useAnalyticsPriorityBreakdown();
-  const { data: slaData, isLoading: slaLoading, refetch: refetchSLA } = useAnalyticsSLACompliance();
+  const { data: priorityBreakdown, isLoading: priorityLoading, refetch: refetchPriority } = useAnalyticsPriorityBreakdown(selectedPeriod);
+  const { data: slaData, isLoading: slaLoading, refetch: refetchSLA } = useAnalyticsSLACompliance(selectedPeriod);
 
   const isLoading = metricsLoading || volumeLoading || teamLoading || heatmapLoading || priorityLoading || slaLoading;
 
@@ -43,7 +44,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
   const slaCompliance = slaData?.overall ?? 0;
 
   // Team performance for stacked bar chart
-  const teamData = (teamPerformance ?? []).map((t: any) => ({
+  const teamData = (teamPerformance ?? []).map((t) => ({
     team: t.name,
     resolved: t.resolved ?? 0,
     inProgress: t.inProgress ?? 0,
@@ -69,16 +70,49 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
   const repeatIssues = priorityData.map(p => ({ category: p.label, count: p.value }));
   const priorityTotal = priorityData.reduce((sum, p) => sum + p.value, 0);
 
-  // Volume data for line chart
-  const volumeLabels = (volume ?? []).map((v: any) => v.date?.slice(5) ?? ''); // MM-DD format
-  const volumeValues = (volume ?? []).map((v: any) => v.count ?? 0);
+  const fallbackVolume = useMemo(() => {
+    const base = new Date();
+    const days = Math.min(periodDays, 30);
+    const values = [];
+    for (let i = days - 1; i >= 0; i -= 1) {
+      const date = new Date(base);
+      date.setDate(base.getDate() - i);
+      values.push({
+        date: date.toISOString().slice(0, 10),
+        count: 120 + ((days - i) % 7) * 5,
+      });
+    }
+    return values;
+  }, [periodDays]);
 
-  // Heatmap transformation
-  const heatmapForChart = (heatmapData ?? []).map((h: any) => ({
+  const volumeSeries = (volume && volume.length > 0) ? volume : fallbackVolume;
+  const showVolumeFallback = !volume || volume.length === 0;
+
+  // Volume data for line chart
+  const volumeLabels = volumeSeries.map((v) => v.date?.slice(5) ?? ''); // MM-DD format
+  const volumeValues = volumeSeries.map((v) => v.count ?? 0);
+
+  const fallbackHeatmap = useMemo(() => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const cells = [];
+    for (let d = 0; d < days.length; d += 1) {
+      for (let h = 0; h < 24; h += 1) {
+        const isPeak = h >= 9 && h <= 17;
+        const base = isPeak ? 6 : 2;
+        const value = base + ((d + h) % 4);
+        cells.push({ day: days[d], hour: h, value });
+      }
+    }
+    return cells;
+  }, []);
+
+  const heatmapForChart = (heatmapData ?? []).map((h) => ({
     day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][h.day] ?? 'Mon',
     hour: h.hour ?? 9,
     value: h.count ?? 0,
   }));
+  const heatmapSeries = heatmapForChart.length > 0 ? heatmapForChart : fallbackHeatmap;
+  const showHeatmapFallback = heatmapForChart.length === 0;
 
   // Funnel data
   const inProgressTickets = totalTickets - resolvedTickets;
@@ -140,6 +174,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
               <button
                 key={period}
                 onClick={() => setSelectedPeriod(period)}
+                aria-pressed={selectedPeriod === period}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   selectedPeriod === period
                     ? 'bg-blue-600 text-white'
@@ -272,13 +307,16 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">Peak hours and days for incident reporting</p>
         </div>
-        {heatmapForChart.length > 0 ? (
+        {heatmapSeries.length > 0 ? (
           <Heatmap
-            data={heatmapForChart}
+            data={heatmapSeries}
             onClick={(cell) => addToast(`${cell.day} ${cell.hour}:00 - ${cell.value} tickets`, 'info')}
           />
         ) : (
           <div className="h-48 flex items-center justify-center text-slate-400">No heatmap data available</div>
+        )}
+        {showHeatmapFallback && (
+          <p className="text-xs text-slate-400 mt-3">Showing sample data for the selected period.</p>
         )}
       </Card>
 
@@ -388,6 +426,9 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                <div className="h-full flex items-center justify-center text-slate-400">No volume data available</div>
              )}
            </div>
+           {showVolumeFallback && (
+             <p className="text-xs text-slate-400 mt-3">Showing sample data for the selected period.</p>
+           )}
         </Card>
 
         <Card className="p-6">
@@ -405,7 +446,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                   <>
                     <DonutChart
                       data={priorityData.map(p => ({ ...p, value: priorityTotal > 0 ? Math.round((p.value / priorityTotal) * 100) : 0 }))}
-                      onClick={(data, index) => addToast(`${data.label}: ${data.value}%`, 'info')}
+                      onClick={(data) => addToast(`${data.label}: ${data.value}%`, 'info')}
                     />
                     <div className="space-y-3 hidden sm:block">
                       {priorityData.map((item) => {
