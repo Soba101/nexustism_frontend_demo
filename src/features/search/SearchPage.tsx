@@ -150,6 +150,7 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
     Low: 'outline',
   };
   const sortOptions = ['relevance', 'date-new', 'date-old', 'priority'] as const;
+  const PROBLEM_SUGGESTION_MIN = 2;
   
   const toggleCategory = (cat: string) => {
     setSelectedCategories(prev => 
@@ -203,6 +204,83 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
   const pageEnd = paginatedIncidents.length > 0
     ? Math.min(pageStart + paginatedIncidents.length - 1, totalResults)
     : 0;
+
+  const normalizeSummary = (value: string) => {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  };
+
+  const problemCandidates = useMemo(() => {
+    if (filteredIncidents.length < PROBLEM_SUGGESTION_MIN) {
+      return [];
+    }
+
+    const candidates: Array<{
+      count: number;
+      summary: string;
+      tickets: Ticket[];
+      source: 'related' | 'summary';
+    }> = [];
+    const ticketById = new Map<string, Ticket>();
+    const seenKeys = new Set<string>();
+
+    for (const ticket of filteredIncidents) {
+      ticketById.set(ticket.id, ticket);
+      ticketById.set(ticket.number, ticket);
+    }
+
+    for (const ticket of filteredIncidents) {
+      const relatedIds = ticket.related_ids ?? [];
+      if (relatedIds.length + 1 < PROBLEM_SUGGESTION_MIN) {
+        continue;
+      }
+      const relatedTickets = relatedIds
+        .map((id) => ticketById.get(id))
+        .filter((item): item is Ticket => Boolean(item));
+      const groupTickets = [ticket, ...relatedTickets];
+      const key = [...new Set(groupTickets.map((item) => item.id))].sort().join('|');
+      if (!key || seenKeys.has(key)) {
+        continue;
+      }
+      seenKeys.add(key);
+      candidates.push({
+        count: groupTickets.length,
+        summary: ticket.short_description,
+        tickets: groupTickets,
+        source: 'related',
+      });
+    }
+
+    const buckets = new Map<string, { summary: string; tickets: Ticket[] }>();
+    for (const ticket of filteredIncidents) {
+      const normalized = normalizeSummary(ticket.short_description);
+      if (!normalized) {
+        continue;
+      }
+      const key = `${ticket.category}|${normalized}`;
+      const entry = buckets.get(key) ?? { summary: ticket.short_description, tickets: [] };
+      entry.tickets.push(ticket);
+      buckets.set(key, entry);
+    }
+
+    for (const entry of buckets.values()) {
+      if (entry.tickets.length < PROBLEM_SUGGESTION_MIN) {
+        continue;
+      }
+      const key = [...new Set(entry.tickets.map((item) => item.id))].sort().join('|');
+      if (!key || seenKeys.has(key)) {
+        continue;
+      }
+      seenKeys.add(key);
+      candidates.push({
+        count: entry.tickets.length,
+        summary: entry.summary,
+        tickets: entry.tickets,
+        source: 'summary',
+      });
+    }
+
+    return candidates.sort((a, b) => b.count - a.count).slice(0, 5);
+  }, [filteredIncidents]);
 
   return (
     <div className="flex-1 min-h-screen bg-slate-50 dark:bg-slate-950 md:pl-64 transition-all duration-300">
@@ -375,7 +453,8 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
              </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
              {/* Loading State */}
              {isLoading ? (
                <div className="p-12 text-center">
@@ -462,6 +541,44 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
                  ))}
                </div>
              )}
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="border-b border-slate-200 dark:border-slate-800 px-4 py-3">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">Problem Candidates</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">2+ similar tickets grouped near this search.</p>
+              </div>
+              {problemCandidates.length === 0 ? (
+                <div className="p-4 text-xs text-slate-500 dark:text-slate-400">
+                  No problem candidates detected yet.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {problemCandidates.map((candidate, index) => (
+                    <button
+                      key={`${candidate.source}-${index}`}
+                      className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                      onClick={() => onSelectIncident(candidate.tickets[0])}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                          {candidate.count} tickets
+                        </span>
+                        <Badge variant="outline" className="text-[10px] uppercase">
+                          {candidate.source === 'related' ? 'similarity' : 'summary'}
+                        </Badge>
+                      </div>
+                      <p className="text-sm font-medium text-slate-900 dark:text-white mt-2">
+                        {candidate.summary}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                        Example: {candidate.tickets.slice(0, 2).map((ticket) => ticket.number).join(', ')}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Pagination - Outside the card for better visibility */}
