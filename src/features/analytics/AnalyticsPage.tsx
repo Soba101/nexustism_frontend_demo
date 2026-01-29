@@ -1,10 +1,9 @@
-'use client';
+﻿'use client';
 
 import { useMemo, useState } from 'react';
 import {
-  Download, FileText, Clock, ArrowUpRight,
-  TrendingUp, PieChart, Activity, Target, Users, Zap, AlertTriangle,
-  CheckCircle2, RefreshCw, TrendingDown, Loader2
+  Download, FileText, Clock, TrendingUp, PieChart, Activity, Target, Users, Zap, AlertTriangle,
+  CheckCircle2, RefreshCw, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -28,31 +27,54 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
   const periodDays = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : 90;
 
   // Fetch all analytics data from API
-  const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics } = useAnalyticsMetrics(selectedPeriod);
-  const { data: volume, isLoading: volumeLoading, refetch: refetchVolume } = useAnalyticsVolume(selectedPeriod);
-  const { data: teamPerformance, isLoading: teamLoading, refetch: refetchTeam } = useAnalyticsTeamPerformance(selectedPeriod);
-  const { data: heatmapData, isLoading: heatmapLoading, refetch: refetchHeatmap } = useAnalyticsHeatmap(selectedPeriod);
-  const { data: priorityBreakdown, isLoading: priorityLoading, refetch: refetchPriority } = useAnalyticsPriorityBreakdown(selectedPeriod);
-  const { data: slaData, isLoading: slaLoading, refetch: refetchSLA } = useAnalyticsSLACompliance(selectedPeriod);
+  const { data: metrics, isLoading: metricsLoading, isError: metricsError, refetch: refetchMetrics } = useAnalyticsMetrics(selectedPeriod);
+  const { data: volume, isLoading: volumeLoading, isError: volumeError, refetch: refetchVolume } = useAnalyticsVolume(selectedPeriod);
+  const { data: teamPerformance, isLoading: teamLoading, isError: teamError, refetch: refetchTeam } = useAnalyticsTeamPerformance(selectedPeriod);
+  const { data: heatmapData, isLoading: heatmapLoading, isError: heatmapError, refetch: refetchHeatmap } = useAnalyticsHeatmap(selectedPeriod);
+  const { data: priorityBreakdown, isLoading: priorityLoading, isError: priorityError, refetch: refetchPriority } = useAnalyticsPriorityBreakdown(selectedPeriod);
+  const { data: slaData, isLoading: slaLoading, isError: slaError, refetch: refetchSLA } = useAnalyticsSLACompliance(selectedPeriod);
 
   const isLoading = metricsLoading || volumeLoading || teamLoading || heatmapLoading || priorityLoading || slaLoading;
+  const hasError = metricsError || volumeError || teamError || heatmapError || priorityError || slaError;
 
   // Transform data for charts
   const totalTickets = metrics?.totalTickets ?? 0;
   const resolvedTickets = metrics?.resolvedTickets ?? 0;
   const avgResolutionTime = metrics?.avgResolutionTime ?? 0;
-  const slaCompliance = slaData?.overall ?? 0;
+  const slaComplianceRaw = slaData?.overall ?? 0;
+  const slaComplianceValue = totalTickets > 0 ? slaComplianceRaw : 0;
+  const slaComplianceDisplay = totalTickets > 0 ? `${Math.round(slaComplianceValue * 10) / 10}%` : 'N/A';
+  const avgResolutionTimeDisplay = totalTickets > 0 ? `${avgResolutionTime}m` : 'N/A';
+  const suppressCharts = !!metrics && metrics.totalTickets === 0 && !metricsError;
 
   // Team performance for stacked bar chart
-  const teamData = (teamPerformance ?? []).map((t) => ({
+  const rawTeamData = (teamPerformance ?? []).map((t) => ({
     team: t.name,
     resolved: t.resolved ?? 0,
     inProgress: t.inProgress ?? 0,
     new: t.new ?? 0,
   }));
+  const teamData = suppressCharts ? [] : rawTeamData;
+
+  const teamTotals = teamData.reduce(
+    (acc, team) => ({
+      resolved: acc.resolved + team.resolved,
+      inProgress: acc.inProgress + team.inProgress,
+      new: acc.new + team.new,
+    }),
+    { resolved: 0, inProgress: 0, new: 0 }
+  );
+
+  const clampedResolved = Math.min(resolvedTickets, totalTickets);
+  const derivedNewTickets = Math.min(teamTotals.new, Math.max(0, totalTickets - clampedResolved));
+  const assignedTickets = Math.max(0, totalTickets - derivedNewTickets);
+  const remainingAfterResolved = Math.max(0, assignedTickets - clampedResolved);
+  const inProgressTickets = teamTotals.inProgress > 0
+    ? Math.min(teamTotals.inProgress, remainingAfterResolved)
+    : remainingAfterResolved;
 
   // Priority breakdown for donut chart
-  const priorityData = priorityBreakdown ? Object.entries(priorityBreakdown).map(([label, value]) => {
+  const rawPriorityData = priorityBreakdown ? Object.entries(priorityBreakdown).map(([label, value]) => {
     const colors: Record<string, string> = {
       'Critical': '#ef4444',
       'High': '#f97316',
@@ -65,6 +87,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
     };
     return { label, value: value as number, color: colors[label] || '#6b7280' };
   }) : [];
+  const priorityData = suppressCharts ? [] : rawPriorityData;
 
   // Calculate totals from priority breakdown for repeat issues
   const repeatIssues = priorityData.map(p => ({ category: p.label, count: p.value }));
@@ -85,8 +108,9 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
     return values;
   }, [periodDays]);
 
-  const volumeSeries = (volume && volume.length > 0) ? volume : fallbackVolume;
-  const showVolumeFallback = !volume || volume.length === 0;
+  const volumeSeriesBase = (volume && volume.length > 0) ? volume : (volumeError ? fallbackVolume : []);
+  const volumeSeries = suppressCharts ? [] : volumeSeriesBase;
+  const showVolumeFallback = volumeError && !suppressCharts;
 
   // Volume data for line chart
   const volumeLabels = volumeSeries.map((v) => v.date?.slice(5) ?? ''); // MM-DD format
@@ -111,24 +135,36 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
     hour: h.hour ?? 9,
     value: h.count ?? 0,
   }));
-  const heatmapSeries = heatmapForChart.length > 0 ? heatmapForChart : fallbackHeatmap;
-  const showHeatmapFallback = heatmapForChart.length === 0;
+  const heatmapSeriesBase = heatmapForChart.length > 0 ? heatmapForChart : (heatmapError ? fallbackHeatmap : []);
+  const heatmapSeries = suppressCharts ? [] : heatmapSeriesBase;
+  const showHeatmapFallback = heatmapError && !suppressCharts;
+
+  const resolutionTrendSeries = useMemo(() => {
+    if (!avgResolutionTime || totalTickets === 0) return [];
+    const points = volumeSeries.length > 0 ? volumeSeries.length : Math.min(periodDays, 14);
+    return Array.from({ length: points }, () => avgResolutionTime);
+  }, [avgResolutionTime, totalTickets, volumeSeries.length, periodDays]);
+
+  const resolutionLabels = volumeSeries.length > 0
+    ? volumeLabels
+    : resolutionTrendSeries.map((_, index) => `Day ${index + 1}`);
+
+  const showResolutionFallback = avgResolutionTime > 0 && volumeSeries.length === 0;
 
   // Funnel data
-  const inProgressTickets = totalTickets - resolvedTickets;
   const funnelData = [
     { name: 'Submitted', value: totalTickets, fill: '#3b82f6' },
-    { name: 'Assigned', value: Math.max(0, totalTickets - 1), fill: '#8b5cf6' },
-    { name: 'In Progress', value: inProgressTickets + resolvedTickets, fill: '#f59e0b' },
-    { name: 'Resolved', value: resolvedTickets, fill: '#10b981' },
+    { name: 'Assigned', value: assignedTickets, fill: '#8b5cf6' },
+    { name: 'In Progress', value: inProgressTickets, fill: '#f59e0b' },
+    { name: 'Resolved', value: clampedResolved, fill: '#10b981' },
   ];
 
   const handleExport = () => {
     const exportData = {
       summary: {
         total: totalTickets,
-        resolved: resolvedTickets,
-        sla_compliance: slaCompliance,
+        resolved: clampedResolved,
+        sla_compliance: slaComplianceValue,
         avg_resolution_time: avgResolutionTime
       },
       teams: teamData,
@@ -147,6 +183,10 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
     refetchSLA();
     addToast('Data refreshed successfully', 'success');
   };
+
+  const hasAnyData = totalTickets > 0 || teamData.length > 0 || priorityData.length > 0 || volumeSeries.length > 0 || heatmapSeries.length > 0;
+  const showNoData = !isLoading && !hasAnyData && !hasError;
+  const trendLabel = totalTickets > 0 ? 'No trend data' : 'No data';
 
   if (isLoading) {
     return (
@@ -196,6 +236,18 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
         </div>
       </div>
 
+      {hasError && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+          Some analytics data failed to load. Use Refresh to retry.
+        </div>
+      )}
+
+      {showNoData && (
+        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+          No analytics data found for the selected period.
+        </div>
+      )}
+
       {/* Top KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-6 relative overflow-hidden">
@@ -203,8 +255,8 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
             <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
               <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
-            <span className="flex items-center text-xs font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-full whitespace-nowrap">
-              <ArrowUpRight className="w-3 h-3 mr-1" /> +12%
+            <span className="flex items-center text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full whitespace-nowrap">
+              {trendLabel}
             </span>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium truncate">Total Tickets</p>
@@ -217,12 +269,12 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
             <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
               <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
             </div>
-            <span className="flex items-center text-xs font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-full whitespace-nowrap">
-              <ArrowUpRight className="w-3 h-3 mr-1" /> +18%
+            <span className="flex items-center text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full whitespace-nowrap">
+              {trendLabel}
             </span>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium truncate">Resolved</p>
-          <p className="text-3xl font-bold text-slate-900 dark:text-white mt-1">{resolvedTickets.toLocaleString()}</p>
+          <p className="text-3xl font-bold text-slate-900 dark:text-white mt-1">{clampedResolved.toLocaleString()}</p>
           <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-green-500/10 rounded-full blur-2xl"></div>
         </Card>
 
@@ -231,12 +283,12 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
             <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
               <Clock className="w-5 h-5 text-purple-600 dark:text-purple-400" />
             </div>
-            <span className="flex items-center text-xs font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-full whitespace-nowrap">
-              <TrendingDown className="w-3 h-3 mr-1" /> -15%
+            <span className="flex items-center text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full whitespace-nowrap">
+              {trendLabel}
             </span>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium truncate">Avg Resolution Time</p>
-          <p className="text-3xl font-bold text-slate-900 dark:text-white mt-1">{avgResolutionTime}m</p>
+          <p className="text-3xl font-bold text-slate-900 dark:text-white mt-1">{avgResolutionTimeDisplay}</p>
           <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl"></div>
         </Card>
 
@@ -245,12 +297,12 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
             <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
               <Target className="w-5 h-5 text-orange-600 dark:text-orange-400" />
             </div>
-            <span className="flex items-center text-xs font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-full whitespace-nowrap">
-              <ArrowUpRight className="w-3 h-3 mr-1" /> +5%
+            <span className="flex items-center text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full whitespace-nowrap">
+              {trendLabel}
             </span>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium truncate">SLA Compliance</p>
-          <p className="text-3xl font-bold text-slate-900 dark:text-white mt-1">{slaCompliance}%</p>
+          <p className="text-3xl font-bold text-slate-900 dark:text-white mt-1">{slaComplianceDisplay}</p>
           <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-orange-500/10 rounded-full blur-2xl"></div>
         </Card>
       </div>
@@ -264,14 +316,14 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">Percentage of tickets resolved within SLA</p>
           </div>
-          <GaugeChart value={slaCompliance} label="SLA Met" thresholds={{ good: 90, warning: 75 }} />
+          <GaugeChart value={slaComplianceValue} label={totalTickets > 0 ? 'SLA Met' : 'No data'} thresholds={{ good: 90, warning: 75 }} />
           <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700 grid grid-cols-3 gap-4 text-center">
             <div>
-              <p className="text-2xl font-bold text-green-600 dark:text-green-400">{resolvedTickets.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-green-600 dark:text-green-400">{totalTickets > 0 ? clampedResolved.toLocaleString() : '0'}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">Within SLA</p>
             </div>
             <div>
-              <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">{inProgressTickets.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">{totalTickets > 0 ? inProgressTickets.toLocaleString() : '0'}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">At Risk</p>
             </div>
             <div>
@@ -316,7 +368,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
           <div className="h-48 flex items-center justify-center text-slate-400">No heatmap data available</div>
         )}
         {showHeatmapFallback && (
-          <p className="text-xs text-slate-400 mt-3">Showing sample data for the selected period.</p>
+          <p className="text-xs text-slate-400 mt-3">Showing sample data due to a service error.</p>
         )}
       </Card>
 
@@ -339,13 +391,13 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
             <div>
               <p className="text-slate-500 dark:text-slate-400">Conversion Rate</p>
               <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                {totalTickets > 0 ? ((resolvedTickets / totalTickets) * 100).toFixed(1) : 0}%
+                {totalTickets > 0 ? ((clampedResolved / totalTickets) * 100).toFixed(1) : 0}%
               </p>
             </div>
             <div>
               <p className="text-slate-500 dark:text-slate-400">Drop-off</p>
               <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                {(totalTickets - resolvedTickets).toLocaleString()}
+                {(totalTickets - clampedResolved).toLocaleString()}
               </p>
             </div>
           </div>
@@ -427,7 +479,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
              )}
            </div>
            {showVolumeFallback && (
-             <p className="text-xs text-slate-400 mt-3">Showing sample data for the selected period.</p>
+             <p className="text-xs text-slate-400 mt-3">Showing sample data due to a service error.</p>
            )}
         </Card>
 
@@ -477,17 +529,24 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                 <h3 className="font-semibold text-slate-900 dark:text-white flex items-center">
                   <Activity className="w-4 h-4 mr-2 text-green-500"/> Resolution Time Trends
                 </h3>
-                <p className="text-xs text-slate-500">Average hours to resolution</p>
+                <p className="text-xs text-slate-500">Average minutes to resolution</p>
               </div>
             </div>
             <div className="h-64 w-full">
-               <AreaChart
-                 data={[4.5, 4.2, 4.0, 3.8, 3.5, 3.2, 3.0, 2.8, 2.9, 2.7, 2.6, 2.5, 2.4, 2.3]}
-                 color="#10b981"
-                 labels={['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5', 'Day 6', 'Day 7', 'Day 8', 'Day 9', 'Day 10', 'Day 11', 'Day 12', 'Day 13', 'Day 14']}
-                 onClick={(data, index) => addToast(`Day ${index + 1}: ${data.value ?? data} hours avg resolution`, 'info')}
-               />
+               {resolutionTrendSeries.length > 0 ? (
+                 <AreaChart
+                   data={resolutionTrendSeries}
+                   color="#10b981"
+                   labels={resolutionLabels}
+                   onClick={(data, index) => addToast(`${resolutionLabels[index]}: ${data.value ?? data} minutes avg resolution`, 'info')}
+                 />
+               ) : (
+                 <div className="h-full flex items-center justify-center text-slate-400">No resolution time data available</div>
+               )}
             </div>
+            {showResolutionFallback && (
+              <p className="text-xs text-slate-400 mt-3">Showing period average until trend data is available.</p>
+            )}
          </Card>
       </div>
     </div>
