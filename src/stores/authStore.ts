@@ -1,6 +1,14 @@
 import { create } from 'zustand';
-import { signIn, signOut, getCurrentUser, onAuthStateChange } from '@/lib/supabase';
 import type { User } from '@/types';
+
+const IS_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
+
+const DEMO_USER: User = {
+  name: 'Demo User',
+  email: 'demo@nexustism.ai',
+  role: 'Support Analyst',
+  avatar: 'DU',
+};
 
 export interface AuthUser {
   id: string;
@@ -45,7 +53,7 @@ const convertAuthUserToUser = (authUser: AuthUser): User => {
   const firstName = authUser.user_metadata?.first_name || authUser.user_metadata?.full_name?.split(' ')[0] || 'User';
   const lastName = authUser.user_metadata?.last_name || authUser.user_metadata?.full_name?.split(' ')[1] || '';
   const fullName = authUser.user_metadata?.full_name || `${firstName} ${lastName}`.trim();
-  
+
   return {
     name: fullName,
     email: authUser.email || '',
@@ -55,11 +63,11 @@ const convertAuthUserToUser = (authUser: AuthUser): User => {
 };
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
-  user: null,
-  isLoading: true,
+  user: IS_MOCK ? DEMO_USER : null,
+  isLoading: IS_MOCK ? false : true,
   error: null,
   sessionTimeout: null,
-  datasetMode: 'prod',
+  datasetMode: IS_MOCK ? 'demo' : 'prod',
 
   setUser: (user) => set({ user }),
   setIsLoading: (isLoading) => set({ isLoading }),
@@ -68,8 +76,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   setDatasetMode: (mode) => set({ datasetMode: mode }),
 
   login: async (email: string, password: string) => {
+    if (IS_MOCK) {
+      set({ user: DEMO_USER, isLoading: false, error: null, datasetMode: 'demo' });
+      return;
+    }
     try {
       set({ isLoading: true, error: null });
+      const { signIn } = await import('@/lib/supabase');
       const { user: authUser } = await signIn(email, password);
 
       if (authUser) {
@@ -78,13 +91,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           email: authUser.email,
           user_metadata: authUser.user_metadata,
         };
-        // Extract dataset mode from user metadata
         const role = authUser.user_metadata?.role || 'prod';
         const datasetMode: 'demo' | 'prod' = role === 'demo' ? 'demo' : 'prod';
-        
-        set({ 
+
+        set({
           user: convertAuthUserToUser(user),
-          datasetMode 
+          datasetMode
         });
         get().setupSessionTimeout();
       }
@@ -98,8 +110,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   logout: async () => {
+    if (IS_MOCK) {
+      set({ user: null, error: null, datasetMode: 'demo', isLoading: false });
+      return;
+    }
     try {
       set({ isLoading: true });
+      const { signOut } = await import('@/lib/supabase');
       await signOut();
       set({ user: null, error: null, datasetMode: 'prod' });
       get().clearSessionTimeout();
@@ -113,8 +130,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   restoreSession: async () => {
+    if (IS_MOCK) {
+      set({ user: DEMO_USER, isLoading: false, datasetMode: 'demo' });
+      return;
+    }
     try {
       set({ isLoading: true });
+      const { getCurrentUser, signOut } = await import('@/lib/supabase');
       const authUser = await getCurrentUser();
 
       if (authUser) {
@@ -123,25 +145,23 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           email: authUser.email,
           user_metadata: authUser.user_metadata,
         };
-        // Extract dataset mode from user metadata
         const role = authUser.user_metadata?.role || 'prod';
         const datasetMode: 'demo' | 'prod' = role === 'demo' ? 'demo' : 'prod';
-        
-        set({ 
+
+        set({
           user: convertAuthUserToUser(user),
-          datasetMode 
+          datasetMode
         });
         get().setupSessionTimeout();
       } else {
-        // No session found - user not logged in
         set({ user: null, datasetMode: 'prod' });
       }
     } catch (error: unknown) {
       console.error('Failed to restore session:', error);
-      // If it's a refresh token error, explicitly sign out to clear invalid tokens
       const message = error instanceof Error ? error.message : '';
       if (message.includes('Refresh Token')) {
         try {
+          const { signOut } = await import('@/lib/supabase');
           await signOut();
         } catch {}
       }
@@ -152,6 +172,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   setupSessionTimeout: () => {
+    if (IS_MOCK) return;
     get().clearSessionTimeout();
 
     const timeout = setTimeout(() => {
@@ -180,30 +201,39 @@ export const useInitializeAuth = () => {
   const { restoreSession } = useAuthStore();
 
   React.useEffect(() => {
+    if (IS_MOCK) {
+      // Already initialized with demo user in store creation
+      return;
+    }
+
     restoreSession();
 
-    const { data } = onAuthStateChange((authUser) => {
-      if (authUser) {
-        const user: AuthUser = {
-          id: authUser.id,
-          email: authUser.email,
-          user_metadata: authUser.user_metadata,
-        };
-        // Extract dataset mode from user metadata
-        const role = authUser.user_metadata?.role || 'prod';
-        const datasetMode: 'demo' | 'prod' = role === 'demo' ? 'demo' : 'prod';
-        
-        useAuthStore.setState({ 
-          user: convertAuthUserToUser(user),
-          datasetMode 
-        });
-      } else {
-        useAuthStore.setState({ user: null, datasetMode: 'prod' });
-      }
+    let unsubscribe: (() => void) | undefined;
+
+    import('@/lib/supabase').then(({ onAuthStateChange }) => {
+      const { data } = onAuthStateChange((authUser: AuthUser | null) => {
+        if (authUser) {
+          const user: AuthUser = {
+            id: authUser.id,
+            email: authUser.email,
+            user_metadata: authUser.user_metadata,
+          };
+          const role = authUser.user_metadata?.role || 'prod';
+          const datasetMode: 'demo' | 'prod' = role === 'demo' ? 'demo' : 'prod';
+
+          useAuthStore.setState({
+            user: convertAuthUserToUser(user),
+            datasetMode
+          });
+        } else {
+          useAuthStore.setState({ user: null, datasetMode: 'prod' });
+        }
+      });
+      unsubscribe = () => data?.subscription?.unsubscribe();
     });
 
     return () => {
-      data?.subscription?.unsubscribe();
+      unsubscribe?.();
     };
   }, [restoreSession]);
 };

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { Search, Clock, AlertCircle, CheckCircle2, Activity, ArrowUpRight, Ticket as TicketIcon } from 'lucide-react';
-import { useTickets, useAnalyticsMetrics } from '@/services/api';
+import { useTickets, useAnalyticsMetrics } from '@/services';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { Ticket } from '@/types';
@@ -181,12 +181,19 @@ export const DashboardPage = ({ setActivePage, onSelectIncident, addToast }: Das
                     <span className="font-mono text-sm font-semibold text-blue-600 dark:text-blue-400">
                       {ticket.number}
                     </span>
-                    <Badge variant={
-                      ticket.priority === 'Critical' ? 'destructive' :
-                      ticket.priority === 'High' ? 'default' : 'secondary'
-                    }>
-                      {ticket.priority}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={
+                        ticket.priority === 'Critical' ? 'destructive' :
+                        ticket.priority === 'High' ? 'default' : 'secondary'
+                      }>
+                        {ticket.priority}
+                      </Badge>
+                      {ticket.ticket_type === 'problem' && (
+                        <Badge className="bg-purple-600 text-white border-purple-600">
+                          PROBLEM
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <p className="text-sm text-slate-900 dark:text-white mb-2 line-clamp-2">
                     {ticket.short_description}
@@ -218,9 +225,16 @@ export const DashboardPage = ({ setActivePage, onSelectIncident, addToast }: Das
                     <span className="font-mono text-sm font-semibold text-red-600 dark:text-red-400">
                       {ticket.number}
                     </span>
-                    <Badge variant="destructive">
-                      {ticket.priority}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="destructive">
+                        {ticket.priority}
+                      </Badge>
+                      {ticket.ticket_type === 'problem' && (
+                        <Badge className="bg-purple-600 text-white border-purple-600">
+                          PROBLEM
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   <p className="text-sm text-slate-900 dark:text-white mb-2 line-clamp-2">
                     {ticket.short_description}

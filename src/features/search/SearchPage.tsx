@@ -4,17 +4,19 @@ import { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Menu, ChevronRight, ChevronLeft, Activity, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useTickets, useSemanticSearch, useSearchSuggestions } from '@/services/api';
+import { useTickets, useSemanticSearch, useSearchSuggestions } from '@/services';
 import { calculateResolutionTime } from '@/utils/helpers';
 import type { Ticket, TicketPriority } from '@/types';
+import { CreateProblemTicketDialog } from '@/features/problems';
 
 interface SearchPageProps {
   onSelectIncident: (incident: Ticket) => void;
+  onNavigateToRCA: (ticket: Ticket) => void;
   setIsMobileOpen: (open: boolean) => void;
   addToast: (msg: string, type: 'success' | 'info' | 'error') => void;
 }
 
-export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: SearchPageProps) => {
+export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen, addToast }: SearchPageProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [suggestionQuery, setSuggestionQuery] = useState('');
@@ -22,6 +24,8 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
   const [selectedPriorities, setSelectedPriorities] = useState<TicketPriority[]>([]);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [createProblemDialogOpen, setCreateProblemDialogOpen] = useState(false);
+  const [selectedCandidateTickets, setSelectedCandidateTickets] = useState<Ticket[]>([]);
 
   // Advanced Search States
   const [queryExpansion, setQueryExpansion] = useState(true);
@@ -210,7 +214,8 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
   };
 
   const problemCandidates = useMemo(() => {
-    if (filteredIncidents.length < PROBLEM_SUGGESTION_MIN) {
+    const candidateSource = filteredIncidents.filter((ticket) => ticket.ticket_type !== 'problem');
+    if (candidateSource.length < PROBLEM_SUGGESTION_MIN) {
       return [];
     }
 
@@ -223,12 +228,12 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
     const ticketById = new Map<string, Ticket>();
     const seenKeys = new Set<string>();
 
-    for (const ticket of filteredIncidents) {
+    for (const ticket of candidateSource) {
       ticketById.set(ticket.id, ticket);
       ticketById.set(ticket.number, ticket);
     }
 
-    for (const ticket of filteredIncidents) {
+    for (const ticket of candidateSource) {
       const relatedIds = ticket.related_ids ?? [];
       if (relatedIds.length + 1 < PROBLEM_SUGGESTION_MIN) {
         continue;
@@ -251,7 +256,7 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
     }
 
     const buckets = new Map<string, { summary: string; tickets: Ticket[] }>();
-    for (const ticket of filteredIncidents) {
+    for (const ticket of candidateSource) {
       const normalized = normalizeSummary(ticket.short_description);
       if (!normalized) {
         continue;
@@ -281,6 +286,18 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
 
     return candidates.sort((a, b) => b.count - a.count).slice(0, 5);
   }, [filteredIncidents]);
+
+  const handleCreateProblem = (tickets: Ticket[]) => {
+    setSelectedCandidateTickets(tickets);
+    setCreateProblemDialogOpen(true);
+  };
+
+  const handleProblemCreated = (problemTicket: Ticket, action?: 'create' | 'analyze') => {
+    addToast(`${problemTicket.number} created successfully`, 'success');
+    if (action === 'analyze') {
+      onNavigateToRCA(problemTicket);
+    }
+  };
 
   return (
     <div className="flex-1 min-h-screen bg-slate-50 dark:bg-slate-950 md:pl-64 transition-all duration-300">
@@ -503,13 +520,23 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
                      <div className="col-span-2 flex items-center space-x-2 md:space-x-3 mb-2 md:mb-0">
                         <span className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-300">{incident.number}</span>
                         <Badge variant={priorityVariantMap[incident.priority]} className="hidden md:inline-flex">{incident.priority}</Badge>
+                        {incident.ticket_type === 'problem' && (
+                          <Badge className="hidden md:inline-flex bg-purple-600 text-white border-purple-600">
+                            PROBLEM
+                          </Badge>
+                        )}
                       </div>
 
                       {/* Summary */}
-                      <div className="col-span-4 mb-2 md:mb-0 pr-4 min-w-0">
+                     <div className="col-span-4 mb-2 md:mb-0 pr-4 min-w-0">
                          <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{incident.short_description}</p>
                          <div className="md:hidden mt-1 flex gap-2">
                             <Badge variant={priorityVariantMap[incident.priority]}>{incident.priority}</Badge>
+                            {incident.ticket_type === 'problem' && (
+                              <Badge className="bg-purple-600 text-white border-purple-600">
+                                PROBLEM
+                              </Badge>
+                            )}
                             <span className="text-xs text-slate-500 dark:text-slate-400">{incident.category}</span>
                          </div>
                       </div>
@@ -555,10 +582,17 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
                   {problemCandidates.map((candidate, index) => (
-                    <button
+                    <div
                       key={`${candidate.source}-${index}`}
-                      className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                      className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
                       onClick={() => onSelectIncident(candidate.tickets[0])}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          onSelectIncident(candidate.tickets[0]);
+                        }
+                      }}
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
@@ -574,7 +608,19 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
                         Example: {candidate.tickets.slice(0, 2).map((ticket) => ticket.number).join(', ')}
                       </p>
-                    </button>
+                      <div className="mt-3 flex justify-end">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleCreateProblem(candidate.tickets);
+                          }}
+                        >
+                          Create Problem
+                        </Button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
@@ -728,6 +774,17 @@ export const SearchPage = ({ onSelectIncident, setIsMobileOpen, addToast }: Sear
         </div>
       </div>
       )}
+
+      <CreateProblemTicketDialog
+        isOpen={createProblemDialogOpen}
+        onClose={() => {
+          setCreateProblemDialogOpen(false);
+          setSelectedCandidateTickets([]);
+        }}
+        preselectedTickets={selectedCandidateTickets}
+        onSuccess={handleProblemCreated}
+        addToast={addToast}
+      />
     </div>
   );
 };

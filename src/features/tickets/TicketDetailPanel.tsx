@@ -7,6 +7,7 @@ import { exportToCSV } from '@/utils/helpers';
 import { Badge, Button } from '@/components/ui/wrappers';
 import { OverviewTab } from './components/OverviewTab';
 import { RelatedTicketsTab } from './components/RelatedTicketsTab';
+import { AffectedIncidentsTab } from './components/AffectedIncidentsTab';
 import { TimelineTab } from './components/TimelineTab';
 import { AuditLogTab } from './components/AuditLogTab';
 
@@ -44,6 +45,14 @@ const TicketDetailPanelContent = ({
   addToast
 }: TicketDetailPanelContentProps) => {
   const [activeTab, setActiveTab] = useState('overview');
+  const isProblemTicket = ticket.ticket_type === 'problem';
+  const tabs = [
+    'Overview',
+    ...(isProblemTicket ? ['Affected Incidents'] : []),
+    'Related Tickets',
+    'Timeline',
+    'Audit Log',
+  ];
 
   return (
     <>
@@ -64,6 +73,11 @@ const TicketDetailPanelContent = ({
               <div className="flex gap-2">
                 <Badge variant={ticket.priority.toLowerCase() as 'critical' | 'high' | 'medium' | 'low'}>{ticket.priority}</Badge>
                 <Badge variant="outline">{ticket.state}</Badge>
+                {isProblemTicket && (
+                  <Badge className="bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-200 dark:border-purple-800">
+                    PROBLEM
+                  </Badge>
+                )}
               </div>
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400">Opened {new Date(ticket.opened_at).toLocaleDateString()} at {new Date(ticket.opened_at).toLocaleTimeString()}</p>
@@ -98,7 +112,7 @@ const TicketDetailPanelContent = ({
         <div className="flex-1 overflow-y-auto bg-white dark:bg-slate-900">
           <div className="px-6 pt-4 border-b border-slate-200 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-900 z-10">
             <div className="flex space-x-6 overflow-x-auto no-scrollbar">
-              {['Overview', 'Related Tickets', 'Timeline', 'Audit Log'].map((tab) => (
+              {tabs.map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab.toLowerCase())}
@@ -116,6 +130,9 @@ const TicketDetailPanelContent = ({
 
           <div className="p-6 space-y-6">
             {activeTab === 'overview' && <OverviewTab ticket={ticket} />}
+            {activeTab === 'affected incidents' && (
+              <AffectedIncidentsTab ticket={ticket} onSelectIncident={onSelectRelated} />
+            )}
             {activeTab === 'related tickets' && (
               <RelatedTicketsTab
                 ticket={ticket}

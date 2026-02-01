@@ -1,0 +1,76 @@
+export const getMockTimeline = (ticketId: string) => [
+  {
+    id: `${ticketId}-tl-1`,
+    timestamp: '2026-01-10T08:30:00Z',
+    type: 'created',
+    description: 'Ticket created via service portal',
+    user: 'System',
+  },
+  {
+    id: `${ticketId}-tl-2`,
+    timestamp: '2026-01-10T08:45:00Z',
+    type: 'assigned',
+    description: 'Auto-assigned to support group',
+    user: 'System',
+  },
+  {
+    id: `${ticketId}-tl-3`,
+    timestamp: '2026-01-10T09:10:00Z',
+    type: 'comment',
+    description: 'Initial triage completed. Investigating root cause.',
+    user: 'Alex Chen',
+  },
+  {
+    id: `${ticketId}-tl-4`,
+    timestamp: '2026-01-10T10:30:00Z',
+    type: 'status_change',
+    description: 'Status changed from New to In Progress',
+    user: 'Alex Chen',
+  },
+  {
+    id: `${ticketId}-tl-5`,
+    timestamp: '2026-01-10T14:00:00Z',
+    type: 'comment',
+    description: 'Identified configuration drift after recent change window. Applying fix.',
+    user: 'Alex Chen',
+  },
+];
+
+export const getMockAuditLog = (ticketId: string) => [
+  {
+    id: `${ticketId}-al-1`,
+    timestamp: '2026-01-10T08:30:00Z',
+    action: 'create',
+    field: null,
+    oldValue: null,
+    newValue: 'Ticket created',
+    user: 'System',
+  },
+  {
+    id: `${ticketId}-al-2`,
+    timestamp: '2026-01-10T08:45:00Z',
+    action: 'update',
+    field: 'assigned_group',
+    oldValue: 'Unassigned',
+    newValue: 'Network Operations',
+    user: 'System',
+  },
+  {
+    id: `${ticketId}-al-3`,
+    timestamp: '2026-01-10T10:30:00Z',
+    action: 'update',
+    field: 'state',
+    oldValue: 'New',
+    newValue: 'In Progress',
+    user: 'Alex Chen',
+  },
+  {
+    id: `${ticketId}-al-4`,
+    timestamp: '2026-01-10T11:00:00Z',
+    action: 'update',
+    field: 'priority',
+    oldValue: 'Medium',
+    newValue: 'High',
+    user: 'Alex Chen',
+  },
+];

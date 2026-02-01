@@ -17,7 +17,7 @@ export const MOCK_TICKETS: Ticket[] = [
     opened_at: '2026-01-10T08:30:00Z',
     assigned_group: 'Network Operations',
     similarity_score: 98,
-    related_ids: ['3', '4']
+    related_ids: ['3', '4', '26']
   },
   {
     id: '2',
@@ -44,7 +44,7 @@ export const MOCK_TICKETS: Ticket[] = [
     resolved_at: '2025-12-15T16:00:00Z',
     assigned_group: 'Network Operations',
     similarity_score: 82,
-    related_ids: ['1']
+    related_ids: ['1', '26']
   },
   {
     id: '4',
@@ -58,7 +58,7 @@ export const MOCK_TICKETS: Ticket[] = [
     resolved_at: '2025-11-20T11:30:00Z',
     assigned_group: 'Network Security',
     similarity_score: 75,
-    related_ids: ['1']
+    related_ids: ['1', '26']
   },
   {
     id: '5',
@@ -333,6 +333,23 @@ export const MOCK_TICKETS: Ticket[] = [
     assigned_group: 'Telecom Team',
     similarity_score: 85,
     related_ids: []
+  },
+  {
+    id: '26',
+    number: 'PRB000120',
+    short_description: 'Recurring VPN connectivity issues in Singapore office',
+    description: 'Multiple incidents over past 3 weeks indicate recurring VPN instability impacting Singapore office users.',
+    category: 'Problem Investigation',
+    priority: 'High',
+    state: 'In Progress',
+    opened_at: '2026-01-08T10:00:00Z',
+    assigned_group: 'Network Engineering',
+    similarity_score: 100,
+    related_ids: ['1', '3', '4'],
+    ticket_type: 'problem',
+    problem_category: 'Third Party',
+    affected_ticket_ids: ['1', '3', '4'],
+    root_cause_summary: 'ISP peering instability causing intermittent packet loss'
   }
 ];
 
@@ -341,7 +358,7 @@ export const GRAPH_NODES: GraphNode[] = [
   { id: '3', label: 'TKT000985', type: 'cause', details: 'Previous Ticket: Gateway Latency' },
   { id: '8', label: 'CHG000451', type: 'change', details: 'Change Request: Firewall Rule Update' },
   { id: '4', label: 'TKT000821', type: 'related', details: 'Similar Issue: Cert Failure (Medium Confidence)' },
-  { id: '9', label: 'PRB000120', type: 'problem', details: 'Problem Investigation: ISP Stability' },
+  { id: '26', label: 'PRB000120', type: 'problem', details: 'Problem Investigation: ISP Stability' },
   // Additional nodes for stress testing (uncomment for larger graph)
   // { id: '10', label: 'TKT001053', type: 'cause', details: 'DNS Resolution Timeout' },
   // { id: '11', label: 'TKT001054', type: 'related', details: 'Network Slowness Report' },
@@ -360,7 +377,7 @@ export const GRAPH_EDGES: GraphEdge[] = [
   { source: '8', target: '3', confidence: 0.90, label: 'Caused' },
   { source: '3', target: '1', confidence: 0.95, label: 'Recurrence' },
   { source: '4', target: '1', confidence: 0.60, label: 'Similar' },
-  { source: '1', target: '9', confidence: 0.85, label: 'Escalated To' },
+  { source: '1', target: '26', confidence: 0.85, label: 'Escalated To' },
   // Additional edges for stress testing (uncomment with nodes above)
   // { source: '10', target: '1', confidence: 0.75, label: 'Related' },
   // { source: '11', target: '3', confidence: 0.65, label: 'Similar' },

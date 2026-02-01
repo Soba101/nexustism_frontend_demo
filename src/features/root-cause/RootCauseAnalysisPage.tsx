@@ -8,7 +8,7 @@ import { useGraphPhysics } from './hooks/useGraphPhysics';
 import { GraphControls } from './components/GraphControls';
 import { GraphCanvas } from './components/GraphCanvas';
 import { NodeDetailPanel } from './components/NodeDetailPanel';
-import { useCausalGraph } from '@/services/api';
+import { useCausalGraph } from '@/services';
 
 interface RootCauseAnalysisPageProps {
   addToast: (msg: string, type: 'success' | 'info' | 'error') => void;
@@ -31,6 +31,7 @@ export const RootCauseAnalysisPage = ({ addToast, targetTicket }: RootCauseAnaly
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<{ source: string; target: string } | null>(null);
+  const isProblemTarget = targetTicket?.ticket_type === 'problem';
 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -59,7 +60,7 @@ export const RootCauseAnalysisPage = ({ addToast, targetTicket }: RootCauseAnaly
 
     return nodesToUse.map(node => {
       const detailsText = node.details?.trim() ? node.details : node.label;
-      if (targetTicket && node.type === 'root') {
+      if (targetTicket && node.type === 'root' && !isProblemTarget) {
         const rootDetails = targetTicket.short_description || detailsText;
         return {
           ...node,
@@ -69,7 +70,7 @@ export const RootCauseAnalysisPage = ({ addToast, targetTicket }: RootCauseAnaly
       }
       return { ...node, details: detailsText };
     });
-  }, [graphData, targetTicket]);
+  }, [graphData, targetTicket, isProblemTarget]);
 
   const graphEdges: GraphEdge[] = useMemo(() => {
     if (graphData?.edges && graphData.edges.length > 0) {
@@ -305,11 +306,16 @@ export const RootCauseAnalysisPage = ({ addToast, targetTicket }: RootCauseAnaly
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                Root Cause Analysis: {targetTicket.number}
+                {isProblemTarget ? 'Problem Investigation' : 'Root Cause Analysis'}: {targetTicket.number}
               </h2>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
                 {targetTicket.short_description}
               </p>
+              {isProblemTarget && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                  Linked incidents: {targetTicket.affected_ticket_ids?.length ?? 0}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${

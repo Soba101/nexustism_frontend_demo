@@ -78,6 +78,11 @@ function App() {
     }, 3000);
   };
 
+  const handleNavigateToRCA = (ticket: Ticket) => {
+    setSelectedTicketForAnalysis(ticket);
+    setActivePage('analyze');
+  };
+
   // Show loading spinner while auth is initializing
   if (authLoading) {
     return (
@@ -123,6 +128,7 @@ function App() {
         {activePage === 'search' && (
           <SearchPage
             onSelectIncident={setSelectedTicket}
+            onNavigateToRCA={handleNavigateToRCA}
             setIsMobileOpen={setIsMobileOpen}
             addToast={addToast}
           />

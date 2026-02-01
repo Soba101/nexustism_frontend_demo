@@ -1,6 +1,6 @@
 import { Clock, AlertCircle, Loader2 } from 'lucide-react';
 import type { Ticket } from '@/types';
-import { useRelatedTickets } from '@/services/api';
+import { useRelatedTickets } from '@/services';
 import { Badge } from '@/components/ui/wrappers';
 
 interface RelatedTicketsTabProps {

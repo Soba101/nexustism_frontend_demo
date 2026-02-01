@@ -9,6 +9,18 @@ export type TicketPriority = 'Critical' | 'High' | 'Medium' | 'Low';
 /** Ticket lifecycle states */
 export type TicketState = 'New' | 'In Progress' | 'Resolved' | 'Closed';
 
+/** Ticket record types */
+export type TicketType = 'incident' | 'problem';
+
+/** Problem root cause categories */
+export type ProblemCategory =
+  | 'Configuration'
+  | 'Capacity'
+  | 'Change Management'
+  | 'Known Error'
+  | 'Third Party'
+  | 'Unknown';
+
 /**
  * Core ticket interface representing an IT service ticket
  * @property similarity_score - AI-computed semantic similarity (0-100)
@@ -27,6 +39,20 @@ export interface Ticket {
   assigned_group: string;
   similarity_score: number;
   related_ids: string[];
+  ticket_type?: TicketType;
+  problem_category?: ProblemCategory;
+  affected_ticket_ids?: string[];
+  root_cause_summary?: string;
+}
+
+export interface CreateProblemTicketForm {
+  short_description: string;
+  description: string;
+  problem_category: ProblemCategory;
+  priority: TicketPriority;
+  assigned_group: string;
+  affected_ticket_ids: string[];
+  root_cause_summary: string;
 }
 
 /** User profile information */

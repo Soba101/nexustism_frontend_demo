@@ -17,17 +17,23 @@ const supabaseUrl = resolveSupabaseUrl();
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Check .env.local');
+  if (process.env.NEXT_PUBLIC_USE_MOCK_DATA !== 'true') {
+    throw new Error('Missing Supabase environment variables. Check .env.local');
+  }
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-  },
-});
+// In mock mode, create a dummy client that won't be used
+// (auth store bypasses all Supabase calls when IS_MOCK is true)
+export const supabase = (supabaseUrl && supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      },
+    })
+  : null as unknown as ReturnType<typeof createClient>;
 
 const clearAuthStorage = () => {
   if (typeof window === 'undefined') return;

@@ -16,7 +16,7 @@ import {
   useAnalyticsHeatmap,
   useAnalyticsPriorityBreakdown,
   useAnalyticsSLACompliance,
-} from '@/services/api';
+} from '@/services';
 
 interface AnalyticsPageProps {
   addToast: (msg: string, type: 'success' | 'info' | 'error') => void;

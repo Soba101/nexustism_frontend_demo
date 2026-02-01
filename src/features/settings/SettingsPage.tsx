@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { storageHelper } from '@/utils/helpers';
 import { useAuthStore } from '@/stores/authStore';
-import { useUserPreferences, useUpdateUserPreferences } from '@/services/api';
+import { useUserPreferences, useUpdateUserPreferences } from '@/services';
 import type { UserPreferences } from '@/types';
 
 interface SettingsPageProps {
