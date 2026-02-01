@@ -118,11 +118,13 @@ function App() {
         />
         
         {activePage === 'home' && (
-          <DashboardPage
-            setActivePage={setActivePage}
-            onSelectIncident={setSelectedTicket}
-            addToast={addToast}
-          />
+          <PageWrapper setIsMobileOpen={setIsMobileOpen}>
+            <DashboardPage
+              setActivePage={setActivePage}
+              onSelectIncident={setSelectedTicket}
+              addToast={addToast}
+            />
+          </PageWrapper>
         )}
 
         {activePage === 'search' && (
