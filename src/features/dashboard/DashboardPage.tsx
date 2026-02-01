@@ -57,7 +57,7 @@ export const DashboardPage = ({ setActivePage, onSelectIncident, addToast }: Das
   };
 
   return (
-    <div className="flex-1 md:ml-64 min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+    <div className="flex-1 min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
       <div className="p-6 md:p-8 max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">

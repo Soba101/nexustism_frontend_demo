@@ -83,7 +83,7 @@ interface HeatmapProps {
 }
 
 export const Heatmap = memo(({ data, onClick }: HeatmapProps) => {
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const hours = Array.from({ length: 24 }, (_, i) => i);
   
   const getColor = (value: number, max: number) => {
@@ -110,41 +110,40 @@ export const Heatmap = memo(({ data, onClick }: HeatmapProps) => {
 
   return (
     <div className="overflow-x-auto">
-      <div className="inline-block min-w-full">
-        <div className="flex gap-1">
-          <div className="w-12 flex flex-col justify-around text-xs text-slate-600 dark:text-slate-400">
-            {days.map(day => (
-              <div key={day} className="h-6 flex items-center justify-end pr-2">{day}</div>
+      <div className="min-w-max">
+        <div className="grid grid-cols-[3rem_auto] gap-2">
+          <div />
+          <div className="grid grid-cols-[repeat(24,1.5rem)] gap-0.5 text-xs text-slate-600 dark:text-slate-400 mb-1">
+            {hours.map((hour) => (
+              <div key={hour} className="text-center">
+                {[0, 6, 12, 18, 23].includes(hour) ? `${hour}h` : ''}
+              </div>
             ))}
           </div>
-          <div className="flex-1">
-            <div className="flex gap-0.5 mb-1 text-xs text-slate-600 dark:text-slate-400">
-              {[0, 6, 12, 18, 23].map(h => (
-                <div key={h} className="w-6 text-center" style={{ marginLeft: h * 24 }}>
-                  {h}h
-                </div>
-              ))}
-            </div>
-            <div className="space-y-1">
-              {days.map(day => (
-                <div key={day} className="flex gap-0.5">
-                  {hours.map(hour => {
-                    const key = `${day}-${hour}`;
-                    const value = heatmapData[key] || 0;
-                    return (
-                      <div
-                        key={hour}
-                        className={`w-6 h-6 rounded ${getColor(value, maxValue)} cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all`}
-                        onClick={() => onClick?.({ day, hour, value })}
-                        title={`${day} ${hour}:00 - ${value} tickets`}
-                      />
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
+
+          {days.map((day) => (
+            <React.Fragment key={day}>
+              <div className="h-6 flex items-center justify-end pr-2 text-xs text-slate-600 dark:text-slate-400">
+                {day}
+              </div>
+              <div className="grid grid-cols-[repeat(24,1.5rem)] gap-0.5">
+                {hours.map((hour) => {
+                  const key = `${day}-${hour}`;
+                  const value = heatmapData[key] || 0;
+                  return (
+                    <div
+                      key={hour}
+                      className={`w-6 h-6 rounded ${getColor(value, maxValue)} cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all`}
+                      onClick={() => onClick?.({ day, hour, value })}
+                      title={`${day} ${hour}:00 - ${value} tickets`}
+                    />
+                  );
+                })}
+              </div>
+            </React.Fragment>
+          ))}
         </div>
+
         <div className="flex items-center gap-2 mt-4 text-xs text-slate-600 dark:text-slate-400">
           <span>Low</span>
           <div className="flex gap-1">

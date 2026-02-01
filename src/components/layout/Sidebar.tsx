@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from 'react';
 import { Search, Network, LayoutDashboard, Settings, Activity, X } from 'lucide-react';
 import type { User } from '@/types';
 
@@ -12,6 +13,9 @@ interface SidebarProps {
 }
 
 export const Sidebar = ({ activePage, setActivePage, isMobileOpen, setIsMobileOpen, user }: SidebarProps) => {
+  const [isClosing, setIsClosing] = useState(false);
+  const [isAnimatingOpen, setIsAnimatingOpen] = useState(false);
+  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const navItems = [
     { id: 'home', icon: LayoutDashboard, label: 'Dashboard' },
     { id: 'search', icon: Search, label: 'Search Tickets' },
@@ -20,9 +24,40 @@ export const Sidebar = ({ activePage, setActivePage, isMobileOpen, setIsMobileOp
     { id: 'settings', icon: Settings, label: 'Settings' },
   ];
 
+  useEffect(() => {
+    if (isMobileOpen) {
+      setIsClosing(false);
+      setIsAnimatingOpen(false);
+      const raf = requestAnimationFrame(() => setIsAnimatingOpen(true));
+      return () => cancelAnimationFrame(raf);
+    }
+    setIsAnimatingOpen(false);
+  }, [isMobileOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const requestClose = () => {
+    if (isClosing) return;
+    setIsClosing(true);
+    setIsAnimatingOpen(false);
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+    }
+    closeTimeoutRef.current = setTimeout(() => {
+      setIsClosing(false);
+      setIsMobileOpen(false);
+    }, 200);
+  };
+
   const handleNavClick = (pageId: string) => {
     setActivePage(pageId);
-    setIsMobileOpen(false);
+    requestClose();
   };
 
   const sidebarContent = (
@@ -34,7 +69,7 @@ export const Sidebar = ({ activePage, setActivePage, isMobileOpen, setIsMobileOp
           </div>
           <span className="font-bold text-xl text-slate-900 dark:text-white tracking-tight">ITSM Nexus</span>
         </div>
-        <button onClick={() => setIsMobileOpen(false)} className="md:hidden p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full" aria-label="Close menu">
+        <button onClick={requestClose} className="md:hidden p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full" aria-label="Close menu">
           <X className="w-5 h-5" />
         </button>
       </div>
@@ -78,8 +113,17 @@ export const Sidebar = ({ activePage, setActivePage, isMobileOpen, setIsMobileOp
 
       {isMobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden flex">
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setIsMobileOpen(false)} />
-          <div className="relative w-64 bg-slate-50 dark:bg-slate-900 h-full shadow-xl flex flex-col animate-in slide-in-from-left duration-300">
+          <div
+            className={`fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity duration-200 ${
+              isMobileOpen && !isClosing && isAnimatingOpen ? 'opacity-100' : 'opacity-0'
+            }`}
+            onClick={requestClose}
+          />
+          <div
+            className={`relative w-64 bg-slate-50 dark:bg-slate-900 h-full shadow-xl flex flex-col will-change-transform transition-transform duration-200 ease-out ${
+              isMobileOpen && !isClosing && isAnimatingOpen ? 'translate-x-0' : '-translate-x-full'
+            }`}
+          >
             {sidebarContent}
           </div>
         </div>
