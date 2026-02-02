@@ -52,7 +52,7 @@ export interface CreateProblemTicketForm {
   priority: TicketPriority;
   assigned_group: string;
   affected_ticket_ids: string[];
-  root_cause_summary: string;
+  root_cause_summary?: string;
 }
 
 /** User profile information */
@@ -132,4 +132,82 @@ export interface Toast {
   id: number;
   msg: string;
   type: 'success' | 'info' | 'error';
+}
+
+// ---------------------------------------------------------------------------
+// Analytics Types
+// ---------------------------------------------------------------------------
+
+export type AnalyticsPeriod = '7d' | '30d' | '90d';
+
+export interface AnalyticsDuplicates {
+  period: AnalyticsPeriod;
+  cluster_count: number;
+  duplicate_rate: number;
+  avg_cluster_size: number;
+  trend: Array<{ date: string; duplicate_rate: number }>;
+  top_themes: Array<{ theme: string; category: string; count: number }>;
+}
+
+export interface AnalyticsIsolation {
+  period: AnalyticsPeriod;
+  isolated_count: number;
+  isolation_rate: number;
+  by_priority: Array<{ priority: TicketPriority; count: number }>;
+  by_category: Array<{ category: string; count: number }>;
+  trend: Array<{ date: string; isolation_rate: number }>;
+}
+
+export interface AnalyticsModelAccuracy {
+  period: AnalyticsPeriod;
+  similarity_histogram: Array<{ bucket: string; count: number }>;
+  high_confidence_rate: number;
+  query_expansion_hit_rate: { with_expansion: number; without_expansion: number };
+  graph_feedback: Array<{ date: string; positive: number; negative: number }>;
+  false_positive_rate: number;
+}
+
+export interface AnalyticsSystems {
+  period: AnalyticsPeriod;
+  systems: Array<{
+    system: string;
+    ticket_count: number;
+    critical_pct: number;
+    avg_resolution_hours: number;
+    sla_compliance_pct: number;
+    problem_ticket_count: number;
+  }>;
+}
+
+export interface AnalyticsProblemTickets {
+  period: AnalyticsPeriod;
+  problem_count: number;
+  escalation_rate: number;
+  avg_incidents_per_problem: number;
+  by_category: Array<{ category: ProblemCategory; count: number }>;
+  lifecycle_trend: Array<{ date: string; open: number; resolved: number }>;
+  time_to_creation_hours: number;
+}
+
+export interface AnalyticsTeamWorkflow {
+  period: AnalyticsPeriod;
+  team_load: Array<{ team: string; new: number; in_progress: number; backlog: number }>;
+  first_touch_rate: number;
+  escalation_paths: Array<{ from: string; to: string; count: number }>;
+  response_time_histogram: Array<{ bucket: string; count: number }>;
+}
+
+export interface AnalyticsPredictions {
+  period: AnalyticsPeriod;
+  forecast: Array<{ date: string; predicted: number; actual?: number }>;
+  emerging_clusters: Array<{ theme: string; count: number; system?: string }>;
+  seasonal_patterns: Array<{ day: string; hour: number; count: number }>;
+}
+
+export interface AnalyticsRootCauses {
+  period: AnalyticsPeriod;
+  coverage_pct: number;
+  top_root_causes: Array<{ cause: string; count: number }>;
+  graph_depth_histogram: Array<{ depth: number; count: number }>;
+  change_related_pct: number;
 }

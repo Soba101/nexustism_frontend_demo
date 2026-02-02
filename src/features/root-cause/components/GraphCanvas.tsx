@@ -212,7 +212,7 @@ export const GraphCanvas = ({
             {/* Circle Node */}
             <circle
               r={node.type === 'root' ? 30 : 24}
-              fill={node.type === 'root' ? '#2563eb' : node.type === 'cause' ? '#dc2626' : node.type === 'change' ? '#f59e0b' : node.type === 'problem' ? '#ef4444' : '#1e293b'}
+              fill={node.type === 'root' ? '#2563eb' : node.type === 'cause' ? '#dc2626' : node.type === 'change' ? '#f59e0b' : node.type === 'problem' ? '#7c3aed' : '#1e293b'}
               stroke={isSelected ? '#fff' : isHovered ? '#94a3b8' : '#475569'}
               strokeWidth={isSelected ? 3 : 2}
               className="drop-shadow-lg"
@@ -223,7 +223,7 @@ export const GraphCanvas = ({
               {node.type === 'root' && <Activity width="16" height="16" color="white" />}
               {node.type === 'cause' && <AlertCircle width="16" height="16" color="#fca5a5" />}
               {node.type === 'change' && <GitCommit width="16" height="16" color="#fef3c7" />}
-              {node.type === 'problem' && <AlertTriangle width="16" height="16" color="#fca5a5" />}
+              {node.type === 'problem' && <AlertTriangle width="16" height="16" color="#e9d5ff" />}
               {node.type === 'related' && <Network width="16" height="16" color="#cbd5e1" />}
             </g>
 

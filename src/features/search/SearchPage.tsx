@@ -26,6 +26,7 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [createProblemDialogOpen, setCreateProblemDialogOpen] = useState(false);
   const [selectedCandidateTickets, setSelectedCandidateTickets] = useState<Ticket[]>([]);
+  const [selectedCandidateSummary, setSelectedCandidateSummary] = useState('');
 
   // Advanced Search States
   const [queryExpansion, setQueryExpansion] = useState(true);
@@ -132,6 +133,10 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
     return results;
   }, [rawResults, selectedCategories, selectedPriorities, sortBy]);
 
+  const problemTicketIds = useMemo(() => {
+    return new Set(rawResults.filter((ticket) => ticket.ticket_type === 'problem').map((ticket) => ticket.id));
+  }, [rawResults]);
+
   const totalResults = useMemo(() => {
     if (isSemanticSearch) {
       return searchData?.total ?? filteredIncidents.length;
@@ -147,11 +152,11 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
 
   const categories = ['Network', 'Software', 'Hardware', 'Database', 'Access'];
   const priorities: TicketPriority[] = ['Critical', 'High', 'Medium', 'Low'];
-  const priorityVariantMap: Record<TicketPriority, 'destructive' | 'default' | 'secondary' | 'outline'> = {
-    Critical: 'destructive',
-    High: 'default',
-    Medium: 'secondary',
-    Low: 'outline',
+  const priorityBadgeClassMap: Record<TicketPriority, string> = {
+    Critical: 'border-red-200 text-red-700 bg-red-50 dark:border-red-500/40 dark:text-red-300 dark:bg-red-500/10',
+    High: 'border-amber-200 text-amber-700 bg-amber-50 dark:border-amber-500/40 dark:text-amber-300 dark:bg-amber-500/10',
+    Medium: 'border-blue-200 text-blue-700 bg-blue-50 dark:border-blue-500/40 dark:text-blue-300 dark:bg-blue-500/10',
+    Low: 'border-slate-200 text-slate-700 bg-slate-50 dark:border-slate-500/40 dark:text-slate-300 dark:bg-slate-500/10',
   };
   const sortOptions = ['relevance', 'date-new', 'date-old', 'priority'] as const;
   const PROBLEM_SUGGESTION_MIN = 2;
@@ -219,6 +224,9 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
       return [];
     }
 
+    const hasProblemLink = (tickets: Ticket[]) =>
+      tickets.some((ticket) => (ticket.related_ids ?? []).some((id) => problemTicketIds.has(id)));
+
     const candidates: Array<{
       count: number;
       summary: string;
@@ -242,6 +250,9 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
         .map((id) => ticketById.get(id))
         .filter((item): item is Ticket => Boolean(item));
       const groupTickets = [ticket, ...relatedTickets];
+      if (hasProblemLink(groupTickets)) {
+        continue;
+      }
       const key = [...new Set(groupTickets.map((item) => item.id))].sort().join('|');
       if (!key || seenKeys.has(key)) {
         continue;
@@ -271,6 +282,9 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
       if (entry.tickets.length < PROBLEM_SUGGESTION_MIN) {
         continue;
       }
+      if (hasProblemLink(entry.tickets)) {
+        continue;
+      }
       const key = [...new Set(entry.tickets.map((item) => item.id))].sort().join('|');
       if (!key || seenKeys.has(key)) {
         continue;
@@ -285,10 +299,18 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
     }
 
     return candidates.sort((a, b) => b.count - a.count).slice(0, 5);
-  }, [filteredIncidents]);
+  }, [filteredIncidents, problemTicketIds]);
 
-  const handleCreateProblem = (tickets: Ticket[]) => {
+  const handleCreateProblem = (tickets: Ticket[], summary: string) => {
+    const alreadyLinked = tickets.some((ticket) =>
+      (ticket.related_ids ?? []).some((id) => problemTicketIds.has(id))
+    );
+    if (alreadyLinked) {
+      addToast('Some tickets are already linked to an existing problem.', 'info');
+      return;
+    }
     setSelectedCandidateTickets(tickets);
+    setSelectedCandidateSummary(summary);
     setCreateProblemDialogOpen(true);
   };
 
@@ -501,9 +523,10 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
                </div>
              ) : (
                <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                 <div className="hidden md:grid grid-cols-12 gap-4 p-4 bg-slate-50/50 dark:bg-slate-900/50 text-xs font-medium text-slate-500 dark:text-slate-400">
+                 <div className="hidden lg:grid grid-cols-12 gap-4 p-4 bg-slate-50/50 dark:bg-slate-900/50 text-xs font-medium text-slate-500 dark:text-slate-400">
                     <div className="col-span-2">Ticket ID</div>
-                    <div className="col-span-4">Summary</div>
+                    <div className="col-span-1">Priority</div>
+                    <div className="col-span-3">Summary</div>
                     <div className="col-span-2">Category</div>
                     <div className="col-span-2">Resolution</div>
                     <div className="col-span-1">Match</div>
@@ -513,25 +536,37 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
                  {paginatedIncidents.map((incident) => (
                    <div 
                      key={incident.id} 
-                     className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors p-4 md:grid md:grid-cols-12 md:gap-4 items-center cursor-pointer relative"
+                     className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors p-4 lg:grid lg:grid-cols-12 lg:gap-4 items-center cursor-pointer relative"
                      onClick={() => onSelectIncident(incident)}
                    >
                       {/* Ticket Number & Status */}
-                     <div className="col-span-2 flex items-center space-x-2 md:space-x-3 mb-2 md:mb-0">
-                        <span className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-300">{incident.number}</span>
-                        <Badge variant={priorityVariantMap[incident.priority]} className="hidden md:inline-flex">{incident.priority}</Badge>
-                        {incident.ticket_type === 'problem' && (
-                          <Badge className="hidden md:inline-flex bg-purple-600 text-white border-purple-600">
-                            PROBLEM
+                     <div className="col-span-2 flex items-center gap-2 lg:gap-3 mb-2 lg:mb-0 min-w-0">
+                        <span className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                          {incident.number}
+                        </span>
+                      </div>
+
+                      {/* Priority */}
+                      <div className="col-span-1 hidden lg:flex items-center">
+                        <div className="flex flex-col items-start gap-1">
+                          <Badge variant="outline" className={priorityBadgeClassMap[incident.priority]}>
+                            {incident.priority}
                           </Badge>
-                        )}
+                          {incident.ticket_type === 'problem' && (
+                            <Badge className="bg-purple-600 text-white border-purple-600 text-[10px] uppercase">
+                              PROBLEM
+                            </Badge>
+                          )}
+                        </div>
                       </div>
 
                       {/* Summary */}
-                     <div className="col-span-4 mb-2 md:mb-0 pr-4 min-w-0">
+                     <div className="col-span-3 mb-2 lg:mb-0 pr-4 min-w-0">
                          <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{incident.short_description}</p>
-                         <div className="md:hidden mt-1 flex gap-2">
-                            <Badge variant={priorityVariantMap[incident.priority]}>{incident.priority}</Badge>
+                         <div className="lg:hidden mt-1 flex gap-2">
+                            <Badge variant="outline" className={priorityBadgeClassMap[incident.priority]}>
+                              {incident.priority}
+                            </Badge>
                             {incident.ticket_type === 'problem' && (
                               <Badge className="bg-purple-600 text-white border-purple-600">
                                 PROBLEM
@@ -542,19 +577,19 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
                       </div>
 
                       {/* Category */}
-                      <div className="col-span-2 hidden md:flex items-center text-sm text-slate-600 dark:text-slate-400">
+                      <div className="col-span-2 hidden lg:flex items-center text-sm text-slate-600 dark:text-slate-400">
                          {incident.category}
                       </div>
 
                       {/* Resolution Time */}
-                      <div className="col-span-2 hidden md:flex items-center">
+                      <div className="col-span-2 hidden lg:flex items-center">
                         <Badge variant="outline" className="text-xs">
                           {calculateResolutionTime(incident.opened_at, incident.resolved_at)}
                         </Badge>
                       </div>
 
                       {/* Similarity Score */}
-                      <div className="col-span-1 hidden md:flex items-center justify-center">
+                      <div className="col-span-1 hidden lg:flex items-center justify-center">
                         <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">{incident.similarity_score}%</span>
                       </div>
 
@@ -614,7 +649,7 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
                           variant="outline"
                           onClick={(event) => {
                             event.stopPropagation();
-                            handleCreateProblem(candidate.tickets);
+                            handleCreateProblem(candidate.tickets, candidate.summary);
                           }}
                         >
                           Create Problem
@@ -780,8 +815,10 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
         onClose={() => {
           setCreateProblemDialogOpen(false);
           setSelectedCandidateTickets([]);
+          setSelectedCandidateSummary('');
         }}
         preselectedTickets={selectedCandidateTickets}
+        prefillSummary={selectedCandidateSummary}
         onSuccess={handleProblemCreated}
         addToast={addToast}
       />

@@ -1,10 +1,10 @@
-# PRD: Create Problem Ticket Feature
+﻿# PRD: Create Problem Ticket Feature
 
 ## Overview
 
 Enable users to create **Problem Tickets** (PRB records) from the SearchPage's Problem Candidates sidebar. A problem ticket groups related incident tickets into a formal investigation, links them bidirectionally, and visualizes the relationships in the causal graph.
 
-**User Flow:** Problem Candidates sidebar auto-detects ticket clusters → User clicks "Create Problem" on a cluster → Modal opens with those tickets already pre-selected → User fills problem details → Problem ticket created and linked → Navigate to RCA graph.
+**User Flow:** Problem Candidates sidebar auto-detects ticket clusters -> User clicks "Create Problem" on a cluster -> Modal opens with those tickets already pre-selected -> User fills problem details -> Problem ticket created and linked -> Navigate to RCA graph.
 
 ---
 
@@ -12,7 +12,7 @@ Enable users to create **Problem Tickets** (PRB records) from the SearchPage's P
 
 The SearchPage already detects clusters of 2+ similar tickets and displays them in the **Problem Candidates** sidebar panel (`SearchPage.tsx` lines 212-283). Each candidate contains a pre-computed `tickets: Ticket[]` array grouped by either `related_ids` overlap or normalized summary text similarity.
 
-However, users cannot act on these candidates — clicking one just opens the first ticket's detail panel. There is no way to promote a detected cluster into a formal Problem record that groups these incidents for coordinated investigation.
+However, users cannot act on these candidates - clicking one just opens the first ticket's detail panel. There is no way to promote a detected cluster into a formal Problem record that groups these incidents for coordinated investigation.
 
 ---
 
@@ -25,7 +25,7 @@ However, users cannot act on these candidates — clicking one just opens the fi
 
 ## Non-Goals
 
-- Problem lifecycle workflow (investigation → root cause found → resolved)
+- Problem lifecycle workflow (investigation -> root cause found -> resolved)
 - Known Error Database integration
 - Auto-linking of new incidents to existing problems
 - Problem ticket templates
@@ -77,17 +77,17 @@ The SearchPage already computes `problemCandidates` via `useMemo`. Each candidat
 Array<{
   count: number;           // Number of tickets in cluster
   summary: string;         // Representative description
-  tickets: Ticket[];       // THE ACTUAL TICKET OBJECTS — already grouped
+  tickets: Ticket[];       // THE ACTUAL TICKET OBJECTS - already grouped
   source: 'related' | 'summary';
 }>
 ```
 
 **Detection strategies:**
 
-- **Strategy 1 — Related IDs**: Takes a ticket + all tickets in its `related_ids` → groups them (e.g., TKT001052 has `related_ids: ['3', '4']` → cluster of 3 tickets)
-- **Strategy 2 — Summary Similarity**: Normalizes `short_description` text and groups by `category + normalized_summary`
+- **Strategy 1 - Related IDs**: Takes a ticket + all tickets in its `related_ids` -> groups them (e.g., TKT001052 has `related_ids: ['3', '4']` -> cluster of 3 tickets)
+- **Strategy 2 - Summary Similarity**: Normalizes `short_description` text and groups by `category + normalized_summary`
 
-Returns top 5 candidates sorted by count. **The tickets are already selected by the algorithm** — the "Create Problem" flow should pass `candidate.tickets` directly as pre-selected tickets, not require the user to manually pick them.
+Returns top 5 candidates sorted by count. **The tickets are already selected by the algorithm** - the "Create Problem" flow should pass `candidate.tickets` directly as pre-selected tickets, not require the user to manually pick them.
 
 Currently, clicking a candidate just calls `onSelectIncident(candidate.tickets[0])` (opens first ticket's detail panel). The `candidate.tickets` array is available but unused for problem creation.
 
@@ -95,7 +95,7 @@ Currently, clicking a candidate just calls `onSelectIncident(candidate.tickets[0
 
 The `'problem'` node type already exists in `GraphNode.type` and is rendered in `GraphCanvas.tsx` with:
 
-- Red background (`#ef4444`)
+- Purple background (aligned with "PROBLEM" badge)
 - AlertTriangle icon
 - 24px radius
 
@@ -146,7 +146,7 @@ export interface CreateProblemTicketForm {
   priority: TicketPriority;
   assigned_group: string;
   affected_ticket_ids: string[];
-  root_cause_summary: string;
+  root_cause_summary?: string;
 }
 ```
 
@@ -164,8 +164,9 @@ Mutation that:
 
 1. Generates next PRB number
 2. Creates ticket with `ticket_type: 'problem'` and `affected_ticket_ids`
-3. Updates each affected incident's `related_ids` to include the new problem ticket ID
-4. Invalidates `['tickets']` and `['causal-graph']` query caches
+3. Sets problem ticket `related_ids = affected_ticket_ids` (all values are `Ticket.id`)
+4. Updates each affected incident's `related_ids` to include the new problem ticket ID
+5. Invalidates `['tickets']` and `['causal-graph']` query caches
 
 ### `useAffectedTickets(problemId: string)`
 
@@ -178,6 +179,7 @@ When the target ticket is a problem ticket:
 - Create a `'problem'` node at center
 - Create `'root'`-type nodes for each affected incident
 - Create edges from each incident to the problem node with label "Escalated To"
+- Include existing incident causal edges connected to those incidents (so context is preserved)
 
 ---
 
@@ -194,14 +196,15 @@ interface CreateProblemTicketDialogProps {
   isOpen: boolean;
   onClose: () => void;
   preselectedTickets: Ticket[];
-  onSuccess: (problemTicket: Ticket) => void;
+  prefillSummary?: string;
+  onSuccess: (problemTicket: Ticket, action?: 'create' | 'analyze') => void;
   addToast: (msg: string, type: 'success' | 'info' | 'error') => void;
 }
 ```
 
 **Two-step modal form:**
 
-The dialog receives `preselectedTickets` directly from the Problem Candidate's `candidate.tickets` array. These tickets are **already grouped by the detection algorithm** — the user is not picking tickets from scratch.
+The dialog receives `preselectedTickets` directly from the Problem Candidate's `candidate.tickets` array. These tickets are **already grouped by the detection algorithm** - the user is not picking tickets from scratch.
 
 #### Step 1: Confirm Tickets & Fill Details
 
@@ -209,88 +212,30 @@ The dialog receives `preselectedTickets` directly from the Problem Candidate's `
 - User can uncheck tickets to exclude them (min 2 must remain)
 - Ticket count: "3 of 3 included"
 - **Problem details form** below the ticket list:
-  - Short Description (pre-filled from `candidate.summary`)
+  - Short Description (pre-filled from `prefillSummary` if provided, else `candidate.summary`)
   - Description (textarea)
   - Problem Category (dropdown)
   - Priority (auto-suggested from highest priority in cluster)
   - Assigned Group (pre-filled from most common `assigned_group` in cluster)
   - Root Cause Summary (optional textarea)
 
-```
-┌──────────────────────────────────────────────────┐
-│  Create Problem Ticket                       [X] │
-├──────────────────────────────────────────────────┤
-│  Step 1 of 2 — Tickets & Details                 │
-│  ● ○                                             │
-│                                                  │
-│  Affected Tickets (from candidate cluster)       │
-│  ☑ TKT001052  High   VPN connection failing...   │
-│  ☑ TKT000985  Med    Singapore VPN Gateway...    │
-│  ☑ TKT000821  High   Unable to connect to VPN   │
-│  3 of 3 included                                 │
-│  ─────────────────────────────────────────────── │
-│  Short Description                               │
-│  ┌────────────────────────────────────────┐      │
-│  │ VPN connection failing for remote u... │ ←prefill│
-│  └────────────────────────────────────────┘      │
-│                                                  │
-│  Description                                     │
-│  ┌────────────────────────────────────────┐      │
-│  │                                        │      │
-│  └────────────────────────────────────────┘      │
-│                                                  │
-│  Category            Priority                    │
-│  [Unknown ▼]         [High ▼] ← auto from cluster│
-│                                                  │
-│  Assigned Group                                  │
-│  ┌────────────────────────────────────────┐      │
-│  │ Network Operations              │ ←prefill│
-│  └────────────────────────────────────────┘      │
-│                                                  │
-│  Root Cause Summary (optional)                   │
-│  ┌────────────────────────────────────────┐      │
-│  │                                        │      │
-│  └────────────────────────────────────────┘      │
-│                                                  │
-│                          [Cancel]  [Next →]      │
-└──────────────────────────────────────────────────┘
-```
+Example UI: Step 1 shows a ticket checklist and a details form with prefilled values.
 
 **Pre-fill logic:**
 
-- `short_description` ← `candidate.summary`
-- `priority` ← highest priority found in `candidate.tickets`
-- `assigned_group` ← most common `assigned_group` in `candidate.tickets`
+- `short_description` <- `prefillSummary ?? candidate.summary`
+- `priority` <- highest priority found in `candidate.tickets`
+- `assigned_group` <- most common `assigned_group` in `candidate.tickets` (tie-break by highest priority, then alphabetical)
+- When tickets are toggled on/off, recompute `priority` and `assigned_group` based on remaining selections
 
 #### Step 2: Review & Confirm
 
 - Summary card: PRB number preview, description, category, priority
 - Linked tickets list with count
-- "Create & Analyze" button → creates ticket + navigates to RCA page
-- "Create" button → creates ticket, stays on search page
+- "Create & Analyze" button -> creates ticket + navigates to RCA page
+- "Create" button -> creates ticket, stays on search page
 
-```
-┌──────────────────────────────────────────────────┐
-│  Create Problem Ticket                       [X] │
-├──────────────────────────────────────────────────┤
-│  Step 2 of 2 — Review & Confirm                 │
-│  ○ ●                                             │
-│                                                  │
-│  ┌────────────────────────────────────────┐      │
-│  │ PRB000125           High  Third Party  │      │
-│  │                                        │      │
-│  │ Recurring VPN connectivity issues      │      │
-│  │ in Singapore office                    │      │
-│  │                                        │      │
-│  │ Linked Incidents: 3                    │      │
-│  │  • TKT001052 — VPN connection fail    │      │
-│  │  • TKT000985 — Singapore VPN Gate     │      │
-│  │  • TKT000821 — Unable to connect      │      │
-│  └────────────────────────────────────────┘      │
-│                                                  │
-│         [← Back]  [Create]  [Create & Analyze]   │
-└──────────────────────────────────────────────────┘
-```
+Example UI: Step 2 shows a summary card with the PRB preview, key fields, and the linked incidents list, plus Back / Create / Create & Analyze actions.
 
 ### AffectedIncidentsTab
 
@@ -308,11 +253,12 @@ Anywhere a ticket is displayed (search results, dashboard, detail panel), show a
 
 ### SearchPage (`src/features/search/SearchPage.tsx`)
 
-1. Add state: `createProblemDialogOpen: boolean`, `selectedCandidateTickets: Ticket[]`
+1. Add state: `createProblemDialogOpen: boolean`, `selectedCandidateTickets: Ticket[]`, `selectedCandidateSummary?: string`
 2. Add "Create Problem" button to each candidate card in Problem Candidates panel (lines 556-581)
-3. Button click → set `selectedCandidateTickets` from candidate, open dialog
-4. Dialog `onSuccess` → toast + optionally navigate to RCA page
-5. New prop: `onNavigateToRCA: (ticket: Ticket) => void`
+3. Button click -> set `selectedCandidateTickets` + `selectedCandidateSummary` from candidate, open dialog
+4. Dialog `onSuccess` -> toast + optionally navigate to RCA page
+5. Exclude candidates where any ticket is already linked to a problem ticket (prevent duplicate problem creation)
+6. New prop: `onNavigateToRCA: (ticket: Ticket) => void`
 
 ### Root Page (`src/app/page.tsx`)
 
@@ -374,9 +320,9 @@ Update affected tickets (`id: '1', '3', '4'`) to include `'26'` in their `relate
 | Modify | `src/data/mockTickets.ts` | Add example problem ticket, update related_ids on linked incidents |
 | Modify | `src/services/mockApi.ts` | Add useCreateProblemTicket, useAffectedTickets, update useCausalGraph |
 | Modify | `src/services/index.ts` | Re-export new hooks |
-| Create | `src/features/problems/CreateProblemTicketDialog.tsx` | 3-step modal form |
+| Create | `src/features/problems/CreateProblemTicketDialog.tsx` | 2-step modal form |
 | Create | `src/features/problems/index.ts` | Barrel export |
-| Modify | `src/features/search/SearchPage.tsx` | Add dialog integration + "Create Problem" buttons on candidates |
+| Modify | `src/features/search/SearchPage.tsx` | Add dialog integration + "Create Problem" buttons on candidates + prefill summary + candidate dedupe |
 | Modify | `src/app/page.tsx` | Add onNavigateToRCA prop to SearchPage |
 | Modify | `src/features/tickets/TicketDetailPanel.tsx` | Problem badge + problem fields in Overview + Affected tab |
 | Create | `src/features/tickets/components/AffectedIncidentsTab.tsx` | List affected incidents for problem tickets |

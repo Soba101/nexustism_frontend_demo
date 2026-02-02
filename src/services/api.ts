@@ -1,7 +1,21 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase, getSession } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
-import type { Ticket, GraphNode, GraphEdge, UserPreferences } from '@/types';
+import type {
+  Ticket,
+  GraphNode,
+  GraphEdge,
+  UserPreferences,
+  AnalyticsDuplicates,
+  AnalyticsIsolation,
+  AnalyticsModelAccuracy,
+  AnalyticsSystems,
+  AnalyticsProblemTickets,
+  AnalyticsTeamWorkflow,
+  AnalyticsPredictions,
+  AnalyticsRootCauses,
+  AnalyticsPeriod,
+} from '@/types';
 
 const resolveApiBaseUrl = () => {
   const localUrl =
@@ -232,7 +246,7 @@ export const useRelatedTickets = (ticketId: string) => {
 // ANALYTICS QUERIES
 // ============================================================================
 
-export const useAnalyticsMetrics = (period: '7d' | '30d' | '90d' = '30d') => {
+export const useAnalyticsMetrics = (period: AnalyticsPeriod = '30d') => {
   const { datasetMode } = useAuthStore();
   return useQuery({
     queryKey: ['analytics', datasetMode, 'metrics', period],
@@ -247,7 +261,7 @@ export const useAnalyticsMetrics = (period: '7d' | '30d' | '90d' = '30d') => {
   });
 };
 
-export const useAnalyticsVolume = (period: '7d' | '30d' | '90d' = '30d') => {
+export const useAnalyticsVolume = (period: AnalyticsPeriod = '30d') => {
   const { datasetMode } = useAuthStore();
   return useQuery({
     queryKey: ['analytics', datasetMode, 'volume', period],
@@ -259,7 +273,7 @@ export const useAnalyticsVolume = (period: '7d' | '30d' | '90d' = '30d') => {
   });
 };
 
-export const useAnalyticsTeamPerformance = (period: '7d' | '30d' | '90d' = '30d') => {
+export const useAnalyticsTeamPerformance = (period: AnalyticsPeriod = '30d') => {
   const { datasetMode } = useAuthStore();
   return useQuery({
     queryKey: ['analytics', datasetMode, 'team-performance', period],
@@ -269,7 +283,7 @@ export const useAnalyticsTeamPerformance = (period: '7d' | '30d' | '90d' = '30d'
   });
 };
 
-export const useAnalyticsHeatmap = (period: '7d' | '30d' | '90d' = '30d') => {
+export const useAnalyticsHeatmap = (period: AnalyticsPeriod = '30d') => {
   const { datasetMode } = useAuthStore();
   return useQuery({
     queryKey: ['analytics', datasetMode, 'heatmap', period],
@@ -279,7 +293,7 @@ export const useAnalyticsHeatmap = (period: '7d' | '30d' | '90d' = '30d') => {
   });
 };
 
-export const useAnalyticsPriorityBreakdown = (period: '7d' | '30d' | '90d' = '30d') => {
+export const useAnalyticsPriorityBreakdown = (period: AnalyticsPeriod = '30d') => {
   const { datasetMode } = useAuthStore();
   return useQuery({
     queryKey: ['analytics', datasetMode, 'priority-breakdown', period],
@@ -289,7 +303,7 @@ export const useAnalyticsPriorityBreakdown = (period: '7d' | '30d' | '90d' = '30
   });
 };
 
-export const useAnalyticsSLACompliance = (period: '7d' | '30d' | '90d' = '30d') => {
+export const useAnalyticsSLACompliance = (period: AnalyticsPeriod = '30d') => {
   const { datasetMode } = useAuthStore();
   return useQuery({
     queryKey: ['analytics', datasetMode, 'sla-compliance', period],
@@ -297,6 +311,86 @@ export const useAnalyticsSLACompliance = (period: '7d' | '30d' | '90d' = '30d') 
       fetchAPI<{ overall: number; byPriority: Record<string, number> }>(
         `/api/analytics/sla-compliance?period=${period}`
       ),
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsDuplicates = (period: AnalyticsPeriod = '30d') => {
+  const { datasetMode } = useAuthStore();
+  return useQuery({
+    queryKey: ['analytics', datasetMode, 'duplicates', period],
+    queryFn: () =>
+      fetchAPI<AnalyticsDuplicates>(`/api/analytics/duplicates?period=${period}`),
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsIsolation = (period: AnalyticsPeriod = '30d') => {
+  const { datasetMode } = useAuthStore();
+  return useQuery({
+    queryKey: ['analytics', datasetMode, 'isolation', period],
+    queryFn: () =>
+      fetchAPI<AnalyticsIsolation>(`/api/analytics/isolation?period=${period}`),
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsModelAccuracy = (period: AnalyticsPeriod = '30d') => {
+  const { datasetMode } = useAuthStore();
+  return useQuery({
+    queryKey: ['analytics', datasetMode, 'model-accuracy', period],
+    queryFn: () =>
+      fetchAPI<AnalyticsModelAccuracy>(`/api/analytics/model-accuracy?period=${period}`),
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsSystemBreakdown = (period: AnalyticsPeriod = '30d') => {
+  const { datasetMode } = useAuthStore();
+  return useQuery({
+    queryKey: ['analytics', datasetMode, 'systems', period],
+    queryFn: () =>
+      fetchAPI<AnalyticsSystems>(`/api/analytics/systems?period=${period}`),
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsProblemTickets = (period: AnalyticsPeriod = '30d') => {
+  const { datasetMode } = useAuthStore();
+  return useQuery({
+    queryKey: ['analytics', datasetMode, 'problem-tickets', period],
+    queryFn: () =>
+      fetchAPI<AnalyticsProblemTickets>(`/api/analytics/problem-tickets?period=${period}`),
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsTeamWorkflow = (period: AnalyticsPeriod = '30d') => {
+  const { datasetMode } = useAuthStore();
+  return useQuery({
+    queryKey: ['analytics', datasetMode, 'team-workflow', period],
+    queryFn: () =>
+      fetchAPI<AnalyticsTeamWorkflow>(`/api/analytics/team-workflow?period=${period}`),
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsPredictions = (period: AnalyticsPeriod = '30d') => {
+  const { datasetMode } = useAuthStore();
+  return useQuery({
+    queryKey: ['analytics', datasetMode, 'predictions', period],
+    queryFn: () =>
+      fetchAPI<AnalyticsPredictions>(`/api/analytics/predictions?period=${period}`),
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsRootCauses = (period: AnalyticsPeriod = '30d') => {
+  const { datasetMode } = useAuthStore();
+  return useQuery({
+    queryKey: ['analytics', datasetMode, 'root-causes', period],
+    queryFn: () =>
+      fetchAPI<AnalyticsRootCauses>(`/api/analytics/root-causes?period=${period}`),
     staleTime: 10 * 60 * 1000,
   });
 };

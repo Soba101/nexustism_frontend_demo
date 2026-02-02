@@ -15,6 +15,7 @@ interface CreateProblemTicketDialogProps {
   isOpen: boolean;
   onClose: () => void;
   preselectedTickets: Ticket[];
+  prefillSummary?: string;
   onSuccess: (problemTicket: Ticket, action?: 'create' | 'analyze') => void;
   addToast: (msg: string, type: 'success' | 'info' | 'error') => void;
 }
@@ -51,15 +52,20 @@ const getMostCommonGroup = (tickets: Ticket[]) => {
     if (!group) continue;
     counts.set(group, (counts.get(group) ?? 0) + 1);
   }
-  let winner = tickets[0].assigned_group ?? '';
-  let best = 0;
+  const grouped: Array<{ group: string; count: number; highestPriority: TicketPriority }> = [];
   counts.forEach((count, group) => {
-    if (count > best) {
-      best = count;
-      winner = group;
-    }
+    const highestPriority = getHighestPriority(tickets.filter((ticket) => ticket.assigned_group === group));
+    grouped.push({ group, count, highestPriority });
   });
-  return winner;
+  if (grouped.length === 0) return '';
+  grouped.sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    if (priorityOrder[a.highestPriority] !== priorityOrder[b.highestPriority]) {
+      return priorityOrder[a.highestPriority] - priorityOrder[b.highestPriority];
+    }
+    return a.group.localeCompare(b.group);
+  });
+  return grouped[0].group;
 };
 
 const getNextProblemNumberPreview = (tickets: Ticket[]) => {
@@ -72,8 +78,8 @@ const getNextProblemNumberPreview = (tickets: Ticket[]) => {
   return `PRB${String(maxNumber + 1).padStart(6, '0')}`;
 };
 
-const buildInitialForm = (tickets: Ticket[]): CreateProblemTicketForm => ({
-  short_description: tickets[0]?.short_description ?? '',
+const buildInitialForm = (tickets: Ticket[], summary?: string): CreateProblemTicketForm => ({
+  short_description: summary?.trim() || (tickets[0]?.short_description ?? ''),
   description: '',
   problem_category: 'Unknown',
   priority: getHighestPriority(tickets),
@@ -86,6 +92,7 @@ export const CreateProblemTicketDialog = ({
   isOpen,
   onClose,
   preselectedTickets,
+  prefillSummary,
   onSuccess,
   addToast,
 }: CreateProblemTicketDialogProps) => {
@@ -100,17 +107,27 @@ export const CreateProblemTicketDialog = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    const initialForm = buildInitialForm(preselectedTickets);
+    const initialForm = buildInitialForm(preselectedTickets, prefillSummary);
     setStep(1);
     setSelectedTicketIds(initialForm.affected_ticket_ids);
     setFormData(initialForm);
-  }, [isOpen, preselectedTickets]);
+  }, [isOpen, preselectedTickets, prefillSummary]);
 
   const allTickets = ticketsData?.tickets ?? preselectedTickets;
   const previewNumber = getNextProblemNumberPreview(allTickets);
   const selectedTickets = preselectedTickets.filter((ticket) =>
     selectedTicketIds.includes(ticket.id)
   );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setFormData((current) => ({
+      ...current,
+      priority: getHighestPriority(selectedTickets),
+      assigned_group: getMostCommonGroup(selectedTickets),
+      affected_ticket_ids: selectedTicketIds,
+    }));
+  }, [isOpen, selectedTicketIds, selectedTickets]);
 
   const validationErrors = {
     tickets: selectedTicketIds.length < 2 ? 'Select at least 2 tickets.' : '',
@@ -127,7 +144,6 @@ export const CreateProblemTicketDialog = ({
       const next = prev.includes(ticketId)
         ? prev.filter((id) => id !== ticketId)
         : [...prev, ticketId];
-      setFormData((current) => ({ ...current, affected_ticket_ids: next }));
       return next;
     });
   };
@@ -153,7 +169,7 @@ export const CreateProblemTicketDialog = ({
             <DialogTitle>Create Problem Ticket</DialogTitle>
           </DialogHeader>
           <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
-            <span>Step {step} of 2 — {step === 1 ? 'Tickets & Details' : 'Review & Confirm'}</span>
+            <span>Step {step} of 2 - {step === 1 ? 'Tickets & Details' : 'Review & Confirm'}</span>
             <div className="flex items-center gap-2">
               <span className={`h-2 w-2 rounded-full ${step === 1 ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'}`} />
               <span className={`h-2 w-2 rounded-full ${step === 2 ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'}`} />
@@ -327,7 +343,7 @@ export const CreateProblemTicketDialog = ({
                   <div className="space-y-1">
                     {selectedTickets.map((ticket) => (
                       <div key={ticket.id} className="text-xs text-slate-600 dark:text-slate-300">
-                        • {ticket.number} — {ticket.short_description}
+                        - {ticket.number} - {ticket.short_description}
                       </div>
                     ))}
                   </div>

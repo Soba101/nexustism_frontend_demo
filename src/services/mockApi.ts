@@ -1,5 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Ticket, GraphNode, GraphEdge, UserPreferences, CreateProblemTicketForm } from '@/types';
+import type {
+  Ticket,
+  GraphNode,
+  GraphEdge,
+  UserPreferences,
+  CreateProblemTicketForm,
+  AnalyticsDuplicates,
+  AnalyticsIsolation,
+  AnalyticsModelAccuracy,
+  AnalyticsSystems,
+  AnalyticsProblemTickets,
+  AnalyticsTeamWorkflow,
+  AnalyticsPredictions,
+  AnalyticsRootCauses,
+  AnalyticsPeriod,
+} from '@/types';
 import { MOCK_TICKETS, GRAPH_NODES, GRAPH_EDGES } from '@/data/mockTickets';
 import {
   getMockMetrics,
@@ -8,6 +23,14 @@ import {
   getMockHeatmap,
   getMockPriorityBreakdown,
   getMockSLACompliance,
+  getMockDuplicates,
+  getMockIsolation,
+  getMockModelAccuracy,
+  getMockSystems,
+  getMockProblemTickets,
+  getMockTeamWorkflow,
+  getMockPredictions,
+  getMockRootCauses,
 } from '@/data/mockAnalytics';
 import { getMockTimeline, getMockAuditLog } from '@/data/mockTimeline';
 import { MOCK_USER_PREFERENCES } from '@/data/mockUserPreferences';
@@ -221,7 +244,7 @@ export const useCreateProblemTicket = () => {
 // ANALYTICS QUERIES
 // ---------------------------------------------------------------------------
 
-export const useAnalyticsMetrics = (period: '7d' | '30d' | '90d' = '30d') => {
+export const useAnalyticsMetrics = (period: AnalyticsPeriod = '30d') => {
   return useQuery({
     queryKey: ['analytics', 'demo', 'metrics', period],
     queryFn: async () => {
@@ -232,7 +255,7 @@ export const useAnalyticsMetrics = (period: '7d' | '30d' | '90d' = '30d') => {
   });
 };
 
-export const useAnalyticsVolume = (period: '7d' | '30d' | '90d' = '30d') => {
+export const useAnalyticsVolume = (period: AnalyticsPeriod = '30d') => {
   return useQuery({
     queryKey: ['analytics', 'demo', 'volume', period],
     queryFn: async () => {
@@ -243,7 +266,7 @@ export const useAnalyticsVolume = (period: '7d' | '30d' | '90d' = '30d') => {
   });
 };
 
-export const useAnalyticsTeamPerformance = (period: '7d' | '30d' | '90d' = '30d') => {
+export const useAnalyticsTeamPerformance = (period: AnalyticsPeriod = '30d') => {
   return useQuery({
     queryKey: ['analytics', 'demo', 'team-performance', period],
     queryFn: async () => {
@@ -254,7 +277,7 @@ export const useAnalyticsTeamPerformance = (period: '7d' | '30d' | '90d' = '30d'
   });
 };
 
-export const useAnalyticsHeatmap = (period: '7d' | '30d' | '90d' = '30d') => {
+export const useAnalyticsHeatmap = (period: AnalyticsPeriod = '30d') => {
   return useQuery({
     queryKey: ['analytics', 'demo', 'heatmap', period],
     queryFn: async () => {
@@ -265,7 +288,7 @@ export const useAnalyticsHeatmap = (period: '7d' | '30d' | '90d' = '30d') => {
   });
 };
 
-export const useAnalyticsPriorityBreakdown = (period: '7d' | '30d' | '90d' = '30d') => {
+export const useAnalyticsPriorityBreakdown = (period: AnalyticsPeriod = '30d') => {
   return useQuery({
     queryKey: ['analytics', 'demo', 'priority-breakdown', period],
     queryFn: async () => {
@@ -276,12 +299,100 @@ export const useAnalyticsPriorityBreakdown = (period: '7d' | '30d' | '90d' = '30
   });
 };
 
-export const useAnalyticsSLACompliance = (period: '7d' | '30d' | '90d' = '30d') => {
+export const useAnalyticsSLACompliance = (period: AnalyticsPeriod = '30d') => {
   return useQuery({
     queryKey: ['analytics', 'demo', 'sla-compliance', period],
     queryFn: async () => {
       await delay();
       return getMockSLACompliance(period);
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsDuplicates = (period: AnalyticsPeriod = '30d') => {
+  return useQuery({
+    queryKey: ['analytics', 'demo', 'duplicates', period],
+    queryFn: async (): Promise<AnalyticsDuplicates> => {
+      await delay();
+      return getMockDuplicates(period);
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsIsolation = (period: AnalyticsPeriod = '30d') => {
+  return useQuery({
+    queryKey: ['analytics', 'demo', 'isolation', period],
+    queryFn: async (): Promise<AnalyticsIsolation> => {
+      await delay();
+      return getMockIsolation(period);
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsModelAccuracy = (period: AnalyticsPeriod = '30d') => {
+  return useQuery({
+    queryKey: ['analytics', 'demo', 'model-accuracy', period],
+    queryFn: async (): Promise<AnalyticsModelAccuracy> => {
+      await delay();
+      return getMockModelAccuracy(period);
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsSystemBreakdown = (period: AnalyticsPeriod = '30d') => {
+  return useQuery({
+    queryKey: ['analytics', 'demo', 'systems', period],
+    queryFn: async (): Promise<AnalyticsSystems> => {
+      await delay();
+      return getMockSystems(period);
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsProblemTickets = (period: AnalyticsPeriod = '30d') => {
+  return useQuery({
+    queryKey: ['analytics', 'demo', 'problem-tickets', period],
+    queryFn: async (): Promise<AnalyticsProblemTickets> => {
+      await delay();
+      return getMockProblemTickets(period);
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsTeamWorkflow = (period: AnalyticsPeriod = '30d') => {
+  return useQuery({
+    queryKey: ['analytics', 'demo', 'team-workflow', period],
+    queryFn: async (): Promise<AnalyticsTeamWorkflow> => {
+      await delay();
+      return getMockTeamWorkflow(period);
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsPredictions = (period: AnalyticsPeriod = '30d') => {
+  return useQuery({
+    queryKey: ['analytics', 'demo', 'predictions', period],
+    queryFn: async (): Promise<AnalyticsPredictions> => {
+      await delay();
+      return getMockPredictions(period);
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useAnalyticsRootCauses = (period: AnalyticsPeriod = '30d') => {
+  return useQuery({
+    queryKey: ['analytics', 'demo', 'root-causes', period],
+    queryFn: async (): Promise<AnalyticsRootCauses> => {
+      await delay();
+      return getMockRootCauses(period);
     },
     staleTime: 10 * 60 * 1000,
   });
@@ -393,31 +504,46 @@ export const useCausalGraph = (ticketId: string) => {
           ticket.affected_ticket_ids?.includes(item.id)
         );
 
-        const nodes: GraphNode[] = [
-          {
-            id: ticket.id,
-            label: ticket.number,
-            type: 'problem',
-            details: `Problem Investigation: ${ticket.short_description}`,
-          },
-          ...affectedTickets.map(
+        const problemNode: GraphNode = {
+          id: ticket.id,
+          label: ticket.number,
+          type: 'problem',
+          details: `Problem Investigation: ${ticket.short_description}`,
+        };
+
+        const affectedIds = new Set(affectedTickets.map((incident) => incident.id));
+        const relatedEdges = GRAPH_EDGES.filter(
+          (edge) => affectedIds.has(edge.source) || affectedIds.has(edge.target)
+        );
+        const relatedNodeIds = new Set<string>(affectedIds);
+        relatedEdges.forEach((edge) => {
+          relatedNodeIds.add(edge.source);
+          relatedNodeIds.add(edge.target);
+        });
+
+        const baseNodes = GRAPH_NODES.filter((node) => relatedNodeIds.has(node.id));
+        const missingIncidentNodes = affectedTickets
+          .filter((incident) => !baseNodes.some((node) => node.id === incident.id))
+          .map(
             (incident): GraphNode => ({
               id: incident.id,
               label: incident.number,
               type: 'root',
               details: `Incident: ${incident.short_description}`,
             })
-          ),
-        ];
+          );
 
-        const edges: GraphEdge[] = affectedTickets.map((incident) => ({
+        const escalationEdges: GraphEdge[] = affectedTickets.map((incident) => ({
           source: incident.id,
           target: ticket.id,
           confidence: 0.85,
           label: 'Escalated To',
         }));
 
-        return { nodes, edges };
+        return {
+          nodes: [problemNode, ...baseNodes, ...missingIncidentNodes],
+          edges: [...relatedEdges, ...escalationEdges],
+        };
       }
 
       return { nodes: GRAPH_NODES, edges: GRAPH_EDGES };
