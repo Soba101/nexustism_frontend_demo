@@ -1,20 +1,18 @@
 ﻿"use client";
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useEffectEvent, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Globe, Sun, Moon, Languages, LogOut, User, Bell, Search as SearchIcon, Download, Eye, Database } from 'lucide-react';
+import type { UserPreferences } from '@/types';
+import { useAuthStore } from '@/stores/authStore';
+import { useUIStore } from '@/stores/uiStore';
+import { IS_STANDALONE_DEMO } from '@/lib/demoMode';
+import { storageHelper } from '@/utils/helpers';
+import { useUserPreferences, useUpdateUserPreferences } from '@/services';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { storageHelper } from '@/utils/helpers';
-import { useAuthStore } from '@/stores/authStore';
-import { useUserPreferences, useUpdateUserPreferences } from '@/services';
-import type { UserPreferences } from '@/types';
-
-interface SettingsPageProps {
-  theme: 'light' | 'dark';
-  setTheme: (theme: 'light' | 'dark') => void;
-  onLogout: () => void;
-}
+import { ServiceNowConfigSection } from './components';
 
 const DEFAULT_PREFERENCES: UserPreferences = {
   theme: 'light',
@@ -60,30 +58,39 @@ const mergePreferences = (
   };
 };
 
-export const SettingsPage = ({ theme, setTheme, onLogout }: SettingsPageProps) => {
-  const { data: preferencesData, dataUpdatedAt } = useUserPreferences();
-  const preferencesSeed = useMemo(() => {
+export const SettingsPage = () => {
+  const { theme, setTheme, addToast } = useUIStore();
+  const user = useAuthStore((state) => state.user);
+  const { data: preferencesData } = useUserPreferences();
+  const preferencesSeed = (() => {
     const stored = storageHelper.get('user_preferences', DEFAULT_PREFERENCES);
     return mergePreferences(stored, preferencesData ?? undefined);
-  }, [preferencesData]);
-  const profileSeed = useMemo(
-    () => storageHelper.get('user_profile', { name: 'Admin User', email: 'admin@nexus.ai' }),
-    []
-  );
+  })();
+  const profileSeed = IS_STANDALONE_DEMO
+    ? {
+        name: user?.name || 'Admin User',
+        email: user?.email || 'admin@admin.com',
+      }
+    : storageHelper.get('user_profile', {
+        name: user?.name || 'Admin User',
+        email: user?.email || 'admin@admin.com',
+      });
 
   return (
     <SettingsPageContent
-      key={preferencesData ? dataUpdatedAt : 'local'}
       theme={theme}
       setTheme={setTheme}
-      onLogout={onLogout}
+      addToast={addToast}
       preferencesSeed={preferencesSeed}
       profileSeed={profileSeed}
     />
   );
 };
 
-interface SettingsPageContentProps extends SettingsPageProps {
+interface SettingsPageContentProps {
+  theme: 'light' | 'dark';
+  setTheme: (theme: 'light' | 'dark') => void;
+  addToast: (msg: string, type: 'success' | 'info' | 'error') => void;
   preferencesSeed: UserPreferences;
   profileSeed: { name: string; email: string };
 }
@@ -91,14 +98,18 @@ interface SettingsPageContentProps extends SettingsPageProps {
 const SettingsPageContent = ({
   theme,
   setTheme,
-  onLogout,
+  addToast,
   preferencesSeed,
   profileSeed,
 }: SettingsPageContentProps) => {
+  const router = useRouter();
   const { user, datasetMode } = useAuthStore();
   const updatePreferencesMutation = useUpdateUserPreferences();
   const saveTimeoutRef = useRef<number | null>(null);
   const skipSyncRef = useRef(true);
+  const savePreferences = useEffectEvent((nextPreferences: UserPreferences) => {
+    updatePreferencesMutation.mutate(nextPreferences);
+  });
 
   const [preferences, setPreferences] = useState<UserPreferences>(() => preferencesSeed);
   const [profile, setProfile] = useState(() => profileSeed);
@@ -116,7 +127,7 @@ const SettingsPageContent = ({
       window.clearTimeout(saveTimeoutRef.current);
     }
     saveTimeoutRef.current = window.setTimeout(() => {
-      updatePreferencesMutation.mutate(preferences);
+      savePreferences(preferences);
     }, 400);
 
     return () => {
@@ -124,7 +135,7 @@ const SettingsPageContent = ({
         window.clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [preferences, updatePreferencesMutation]);
+  }, [preferences]);
 
   // Save profile locally
   useEffect(() => {
@@ -189,7 +200,7 @@ const SettingsPageContent = ({
               <div>
                 <p className="font-medium text-slate-900 dark:text-white">Current Dataset</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {datasetMode === 'demo' ? 'Demo Dataset (Read-only)' : 'Production Dataset'}
+                  {datasetMode === 'demo' ? 'Standalone Demo Dataset' : 'Production Dataset'}
                 </p>
               </div>
               <Badge variant={datasetMode === 'demo' ? 'secondary' : 'default'}>
@@ -202,7 +213,9 @@ const SettingsPageContent = ({
             </div>
             <div className="p-4 bg-slate-50 dark:bg-slate-900/50">
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Dataset mode is determined by your account role. Contact your administrator to change datasets.
+                {datasetMode === 'demo'
+                  ? 'This preview runs entirely on local showcase data, so analytics, search, and admin actions stay self-contained.'
+                  : 'Dataset mode is determined by your account role. Contact your administrator to change datasets.'}
               </p>
             </div>
           </Card>
@@ -531,11 +544,17 @@ const SettingsPageContent = ({
           </Card>
         </section>
 
+        <ServiceNowConfigSection />
+
         {/* Logout */}
         <div className="flex justify-end pt-4 border-t border-slate-200 dark:border-slate-800">
-          <Button 
-            variant="destructive" 
-            onClick={onLogout}
+          <Button
+            variant="destructive"
+            onClick={() => {
+              useAuthStore.getState().logout();
+              addToast('Signed out successfully', 'info');
+              router.push('/login');
+            }}
             className="bg-red-600 hover:bg-red-700 text-white"
           >
             <LogOut className="w-4 h-4 mr-2" />

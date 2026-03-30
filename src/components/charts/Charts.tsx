@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { memo, useMemo } from "react";
 import { Area, AreaChart as RechartsAreaChart, CartesianGrid, Line, LineChart as RechartsLineChart, Pie, PieChart as RechartsPieChart, XAxis, YAxis, Cell } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 
@@ -22,20 +21,20 @@ interface AreaChartProps {
   onClick?: (data: ChartPoint, index: number) => void;
 }
 
-export const AreaChart = memo(({ data, color = "#10b981", labels, onClick }: AreaChartProps) => {
-  const chartData = useMemo(() => data.map((value, index) => ({
+export function AreaChart({ data, color = "#10b981", labels, onClick }: AreaChartProps) {
+  const chartData = data.map((value, index) => ({
     day: labels ? labels[index] : `Day ${index + 1}`,
     displayDay: labels ? labels[index] : `D${index + 1}`,
     value: value,
     index: index
-  })), [data, labels]);
+  }));
 
-  const chartConfig = useMemo(() => ({
+  const chartConfig = {
     value: {
       label: "Hours",
       color: color,
     },
-  } satisfies ChartConfig), [color]);
+  } satisfies ChartConfig;
 
   const handleClick = (data: RechartsClickState) => {
     const payload = data?.activePayload?.[0]?.payload;
@@ -74,7 +73,7 @@ export const AreaChart = memo(({ data, color = "#10b981", labels, onClick }: Are
       </RechartsAreaChart>
     </ChartContainer>
   );
-});
+}
 
 AreaChart.displayName = 'AreaChart';
 
@@ -86,20 +85,20 @@ interface SimpleLineChartProps {
   onClick?: (data: ChartPoint, index: number) => void;
 }
 
-export const SimpleLineChart = memo(({ data, color = "#3b82f6", labels, onClick }: SimpleLineChartProps) => {
-  const chartData = useMemo(() => data.map((value, index) => ({
+export function SimpleLineChart({ data, color = "#3b82f6", labels, onClick }: SimpleLineChartProps) {
+  const chartData = data.map((value, index) => ({
     day: labels ? labels[index] : `Day ${index + 1}`,
     displayDay: labels ? labels[index] : `D${index + 1}`,
     value: value,
     index: index
-  })), [data, labels]);
+  }));
 
-  const chartConfig = useMemo(() => ({
+  const chartConfig = {
     value: {
       label: "Tickets",
       color: color,
     },
-  } satisfies ChartConfig), [color]);
+  } satisfies ChartConfig;
 
   const handleClick = (data: RechartsClickState) => {
     const payload = data?.activePayload?.[0]?.payload;
@@ -137,7 +136,7 @@ export const SimpleLineChart = memo(({ data, color = "#3b82f6", labels, onClick 
       </RechartsLineChart>
     </ChartContainer>
   );
-});
+}
 
 SimpleLineChart.displayName = 'SimpleLineChart';
 
@@ -153,23 +152,23 @@ interface DonutChartProps {
   onClick?: (data: DonutChartData, index: number) => void;
 }
 
-export const DonutChart = memo(({ data, onClick }: DonutChartProps) => {
+export function DonutChart({ data, onClick }: DonutChartProps) {
   const [activeIndex, setActiveIndex] = React.useState<number | null>(null);
 
-  const chartData = useMemo(() => data.map((item) => ({
+  const chartData = data.map((item) => ({
     name: item.label,
     value: item.value,
     fill: item.color,
     originalData: item
-  })), [data]);
+  }));
 
-  const chartConfig = useMemo(() => data.reduce((acc, item) => {
+  const chartConfig = data.reduce((acc, item) => {
     acc[item.label.toLowerCase()] = {
       label: item.label,
       color: item.color,
     };
     return acc;
-  }, {} as ChartConfig), [data]);
+  }, {} as ChartConfig);
 
   const handleClick = (_: unknown, index: number) => {
     setActiveIndex(index);
@@ -203,6 +202,6 @@ export const DonutChart = memo(({ data, onClick }: DonutChartProps) => {
       </RechartsPieChart>
     </ChartContainer>
   );
-});
+}
 
 DonutChart.displayName = 'DonutChart';

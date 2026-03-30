@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Download,
   FileText,
@@ -36,11 +36,8 @@ import {
   Line,
   Legend,
 } from 'recharts';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AreaChart, SimpleLineChart, DonutChart, GaugeChart, Heatmap, FunnelChartComponent, StackedBarChart } from '@/components/charts';
+import type { AnalyticsPeriod, AnalyticsVectorLabelBy, AnalyticsVectorPoint } from '@/types';
+import { useUIStore } from '@/stores/uiStore';
 import { exportToCSV } from '@/utils';
 import {
   useAnalyticsMetrics,
@@ -57,12 +54,15 @@ import {
   useAnalyticsTeamWorkflow,
   useAnalyticsPredictions,
   useAnalyticsRootCauses,
+  useAnalyticsVectorMap,
+  useTicket,
 } from '@/services';
-import type { AnalyticsPeriod } from '@/types';
-
-interface AnalyticsPageProps {
-  addToast: (msg: string, type: 'success' | 'info' | 'error') => void;
-}
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { AreaChart, SimpleLineChart, DonutChart, GaugeChart, Heatmap, FunnelChartComponent, StackedBarChart } from '@/components/charts';
+import { VectorMap } from './components/VectorMap';
 
 const TABS = [
   { value: 'overview', label: 'Overview' },
@@ -72,8 +72,29 @@ const TABS = [
   { value: 'predictions', label: 'Predictions' },
 ];
 
-export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
+const formatTrendDelta = (value?: number, suffix = 'vs prev period') => {
+  if (value === undefined || Number.isNaN(value)) return `No data`;
+  if (Math.abs(value) < 0.1) return `Flat ${suffix}`;
+  return `${value > 0 ? '+' : ''}${Math.round(value * 10) / 10}% ${suffix}`;
+};
+
+const formatMinuteTrend = (value?: number) => {
+  if (value === undefined || Number.isNaN(value)) return 'No data';
+  if (Math.abs(value) < 1) return 'Flat vs prev period';
+  return value < 0 ? `${Math.abs(Math.round(value))}m faster` : `+${Math.round(value)}m slower`;
+};
+
+const formatPointTrend = (value?: number) => {
+  if (value === undefined || Number.isNaN(value)) return 'No data';
+  if (Math.abs(value) < 0.1) return 'Flat vs prev period';
+  return `${value > 0 ? '+' : ''}${Math.round(value * 10) / 10} pts`;
+};
+
+export const AnalyticsPage = () => {
+  const { addToast, setSelectedTicket } = useUIStore();
   const [selectedPeriod, setSelectedPeriod] = useState<AnalyticsPeriod>('30d');
+  const [vectorLabelBy, setVectorLabelBy] = useState<AnalyticsVectorLabelBy>('category');
+  const [selectedVectorTicketId, setSelectedVectorTicketId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return 'overview';
     const params = new URLSearchParams(window.location.search);
@@ -109,6 +130,16 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
   const { data: teamWorkflow, isLoading: workflowLoading, isError: workflowError, refetch: refetchWorkflow } = useAnalyticsTeamWorkflow(selectedPeriod);
   const { data: predictions, isLoading: predictionsLoading, isError: predictionsError, refetch: refetchPredictions } = useAnalyticsPredictions(selectedPeriod);
   const { data: rootCauses, isLoading: rootLoading, isError: rootError, refetch: refetchRoot } = useAnalyticsRootCauses(selectedPeriod);
+  const { data: vectorMap, isLoading: vectorMapLoading, isError: vectorMapError, refetch: refetchVectorMap } = useAnalyticsVectorMap(selectedPeriod, {
+    labelBy: vectorLabelBy,
+    limit: 600,
+  });
+  const { data: selectedVectorTicket } = useTicket(selectedVectorTicketId ?? '');
+
+  useEffect(() => {
+    if (!selectedVectorTicket) return;
+    setSelectedTicket(selectedVectorTicket);
+  }, [selectedVectorTicket, setSelectedTicket]);
 
   const isLoading =
     metricsLoading ||
@@ -124,7 +155,8 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
     problemLoading ||
     workflowLoading ||
     predictionsLoading ||
-    rootLoading;
+    rootLoading ||
+    vectorMapLoading;
 
   const hasError =
     metricsError ||
@@ -140,7 +172,8 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
     problemError ||
     workflowError ||
     predictionsError ||
-    rootError;
+    rootError ||
+    vectorMapError;
 
   // Transform data for charts
   const totalTickets = metrics?.totalTickets ?? 0;
@@ -197,7 +230,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
   const repeatIssues = priorityData.map(p => ({ category: p.label, count: p.value }));
   const priorityTotal = priorityData.reduce((sum, p) => sum + p.value, 0);
 
-  const fallbackVolume = useMemo(() => {
+  const fallbackVolume = (() => {
     const base = new Date();
     const days = Math.min(periodDays, 30);
     const values = [];
@@ -210,7 +243,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
       });
     }
     return values;
-  }, [periodDays]);
+  })();
 
   const volumeSeriesBase = (volume && volume.length > 0) ? volume : (volumeError ? fallbackVolume : []);
   const volumeSeries = suppressCharts ? [] : volumeSeriesBase;
@@ -220,7 +253,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
   const volumeLabels = volumeSeries.map((v) => v.date?.slice(5) ?? ''); // MM-DD format
   const volumeValues = volumeSeries.map((v) => v.count ?? 0);
 
-  const fallbackHeatmap = useMemo(() => {
+  const fallbackHeatmap = (() => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const cells = [];
     for (let d = 0; d < days.length; d += 1) {
@@ -232,7 +265,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
       }
     }
     return cells;
-  }, []);
+  })();
 
   const heatmapForChart = (heatmapData ?? []).map((h) => ({
     day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][h.day] ?? 'Mon',
@@ -243,11 +276,11 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
   const heatmapSeries = suppressCharts ? [] : heatmapSeriesBase;
   const showHeatmapFallback = heatmapError && !suppressCharts;
 
-  const resolutionTrendSeries = useMemo(() => {
+  const resolutionTrendSeries = (() => {
     if (!avgResolutionTime || totalTickets === 0) return [];
     const points = volumeSeries.length > 0 ? volumeSeries.length : Math.min(periodDays, 14);
     return Array.from({ length: points }, () => avgResolutionTime);
-  }, [avgResolutionTime, totalTickets, volumeSeries.length, periodDays]);
+  })();
 
   const resolutionLabels = volumeSeries.length > 0
     ? volumeLabels
@@ -263,15 +296,15 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
     { name: 'Resolved', value: clampedResolved, fill: '#10b981' },
   ];
 
-  const duplicateTrendValues = duplicates?.trend?.map((point) => Math.round(point.duplicate_rate * 1000) / 10) ?? [];
-  const duplicateTrendLabels = duplicates?.trend?.map((point) => point.date.slice(5)) ?? [];
-  const duplicateRateDisplay = duplicates ? `${(duplicates.duplicate_rate * 100).toFixed(1)}%` : 'N/A';
+  const duplicateTrendValues = duplicates?.trend?.map((point) => Math.round(point.duplicate_rate * 10) / 10) ?? [];
+  const duplicateTrendLabels = duplicates?.trend?.map((point) => (point.date ?? '').slice(5)) ?? [];
+  const duplicateRateDisplay = duplicates ? `${duplicates.duplicate_rate.toFixed(1)}%` : 'N/A';
   const duplicateClusterDisplay = duplicates?.cluster_count?.toLocaleString() ?? '0';
   const duplicateAvgSizeDisplay = duplicates?.avg_cluster_size?.toFixed(1) ?? '0';
 
-  const isolationTrendValues = isolation?.trend?.map((point) => Math.round(point.isolation_rate * 1000) / 10) ?? [];
-  const isolationTrendLabels = isolation?.trend?.map((point) => point.date.slice(5)) ?? [];
-  const isolationRateDisplay = isolation ? `${(isolation.isolation_rate * 100).toFixed(1)}%` : 'N/A';
+  const isolationTrendValues = isolation?.trend?.map((point) => Math.round(point.isolation_rate * 10) / 10) ?? [];
+  const isolationTrendLabels = isolation?.trend?.map((point) => (point.date ?? '').slice(5)) ?? [];
+  const isolationRateDisplay = isolation ? `${isolation.isolation_rate.toFixed(1)}%` : 'N/A';
   const isolatedCountDisplay = isolation?.isolated_count?.toLocaleString() ?? '0';
 
   const problemCategoryData = (problemTickets?.by_category ?? []).map((item) => {
@@ -290,8 +323,8 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
   const problemLifecycleSeries = problemTickets?.lifecycle_trend ?? [];
 
   const modelHistogram = modelAccuracy?.similarity_histogram ?? [];
-  const highConfidenceDisplay = modelAccuracy ? `${(modelAccuracy.high_confidence_rate * 100).toFixed(1)}%` : 'N/A';
-  const falsePositiveDisplay = modelAccuracy ? `${(modelAccuracy.false_positive_rate * 100).toFixed(1)}%` : 'N/A';
+  const highConfidenceDisplay = modelAccuracy ? `${modelAccuracy.high_confidence_rate.toFixed(1)}%` : 'N/A';
+  const falsePositiveDisplay = modelAccuracy ? `${modelAccuracy.false_positive_rate.toFixed(1)}%` : 'N/A';
 
   const graphFeedbackSeries = modelAccuracy?.graph_feedback ?? [];
 
@@ -302,7 +335,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
   const teamWorkflowData = teamWorkflow?.team_load ?? [];
   const escalationPaths = teamWorkflow?.escalation_paths ?? [];
   const responseTimeHistogram = teamWorkflow?.response_time_histogram ?? [];
-  const firstTouchRateDisplay = teamWorkflow ? `${(teamWorkflow.first_touch_rate * 100).toFixed(1)}%` : 'N/A';
+  const firstTouchRateDisplay = teamWorkflow ? `${teamWorkflow.first_touch_rate.toFixed(1)}%` : 'N/A';
 
   const predictionForecast = predictions?.forecast ?? [];
   const emergingClusters = predictions?.emerging_clusters ?? [];
@@ -313,9 +346,10 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
     value: pattern.count,
   }));
 
-  const rootCauseCoverageDisplay = rootCauses ? `${(rootCauses.coverage_pct * 100).toFixed(1)}%` : 'N/A';
-  const changeRelatedDisplay = rootCauses ? `${(rootCauses.change_related_pct * 100).toFixed(1)}%` : 'N/A';
+  const rootCauseCoverageDisplay = rootCauses ? `${rootCauses.coverage_pct.toFixed(1)}%` : 'N/A';
+  const changeRelatedDisplay = rootCauses ? `${rootCauses.change_related_pct.toFixed(1)}%` : 'N/A';
   const rootCauseDepthSeries = rootCauses?.graph_depth_histogram ?? [];
+  const vectorMapPoints = vectorMap?.points ?? [];
 
   const mttrHours = systemsData.length
     ? systemsData.reduce((sum, item) => sum + item.avg_resolution_hours, 0) / systemsData.length
@@ -361,7 +395,13 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
     refetchWorkflow();
     refetchPredictions();
     refetchRoot();
+    refetchVectorMap();
     addToast('Data refreshed successfully', 'success');
+  };
+
+  const handleVectorPointClick = (point: AnalyticsVectorPoint) => {
+    setSelectedVectorTicketId(point.id || point.number);
+    addToast(`Opening ${point.number}`, 'info');
   };
 
   const hasAnyData =
@@ -373,9 +413,13 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
     (duplicates?.cluster_count ?? 0) > 0 ||
     (isolation?.isolated_count ?? 0) > 0 ||
     (systemsData.length > 0) ||
-    (problemTickets?.problem_count ?? 0) > 0;
+    (problemTickets?.problem_count ?? 0) > 0 ||
+    vectorMapPoints.length > 0;
   const showNoData = !isLoading && !hasAnyData && !hasError;
-  const trendLabel = totalTickets > 0 ? 'No trend data' : 'No data';
+  const totalTicketsTrendLabel = totalTickets > 0 ? formatTrendDelta(metrics?.trendTotalTickets) : 'No data';
+  const resolvedTrendLabel = totalTickets > 0 ? formatTrendDelta(metrics?.trendResolvedTickets) : 'No data';
+  const resolutionTrendLabel = totalTickets > 0 ? formatMinuteTrend(metrics?.trendAvgResolutionTime) : 'No data';
+  const slaTrendLabel = totalTickets > 0 ? formatPointTrend(metrics?.trendSlaCompliance) : 'No data';
 
   if (isLoading) {
     return (
@@ -455,7 +499,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                   <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <span className="flex items-center text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full whitespace-nowrap">
-                  {trendLabel}
+                  {totalTicketsTrendLabel}
                 </span>
               </div>
               <p className="text-sm text-slate-500 dark:text-slate-400 font-medium truncate">Total Tickets</p>
@@ -469,7 +513,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                   <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
                 </div>
                 <span className="flex items-center text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full whitespace-nowrap">
-                  {trendLabel}
+                  {resolvedTrendLabel}
                 </span>
               </div>
               <p className="text-sm text-slate-500 dark:text-slate-400 font-medium truncate">Resolved</p>
@@ -483,7 +527,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                   <Clock className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                 </div>
                 <span className="flex items-center text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full whitespace-nowrap">
-                  {trendLabel}
+                  {resolutionTrendLabel}
                 </span>
               </div>
               <p className="text-sm text-slate-500 dark:text-slate-400 font-medium truncate">Avg Resolution Time</p>
@@ -497,7 +541,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                   <Target className="w-5 h-5 text-orange-600 dark:text-orange-400" />
                 </div>
                 <span className="flex items-center text-xs font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full whitespace-nowrap">
-                  {trendLabel}
+                  {slaTrendLabel}
                 </span>
               </div>
               <p className="text-sm text-slate-500 dark:text-slate-400 font-medium truncate">SLA Compliance</p>
@@ -804,7 +848,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                 <p className="text-xs text-slate-500">Model accuracy and feedback health</p>
               </div>
               <GaugeChart
-                value={modelAccuracy ? Math.round(modelAccuracy.high_confidence_rate * 100) : 0}
+                value={modelAccuracy ? Math.round(modelAccuracy.high_confidence_rate) : 0}
                 label="High Confidence"
                 thresholds={{ good: 70, warning: 50 }}
               />
@@ -816,7 +860,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                 <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
                   <p className="text-xs text-slate-500">Query Expansion</p>
                   <p className="text-lg font-semibold text-slate-900 dark:text-white">
-                    {modelAccuracy ? `${(modelAccuracy.query_expansion_hit_rate.with_expansion * 100).toFixed(0)}%` : 'N/A'}
+                    {modelAccuracy ? `${modelAccuracy.query_expansion_hit_rate.with_expansion.toFixed(0)}%` : 'N/A'}
                   </p>
                 </div>
               </div>
@@ -833,7 +877,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                     <div key={system.system} className="flex items-center justify-between text-sm">
                       <span className="text-slate-700 dark:text-slate-300">{system.system}</span>
                       <span className="text-slate-500 dark:text-slate-400">
-                        {system.ticket_count} | {Math.round(system.critical_pct * 100)}%
+                        {system.ticket_count} | {Math.round(system.critical_pct)}%
                       </span>
                     </div>
                   ))
@@ -877,9 +921,47 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                 <span className="text-xs text-slate-500 dark:text-slate-400">Problem Tickets</span>
               </div>
               <p className="text-2xl font-bold text-slate-900 dark:text-white">{problemTickets?.problem_count ?? 0}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Escalation Rate: {problemTickets ? `${(problemTickets.escalation_rate * 100).toFixed(1)}%` : 'N/A'}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Escalation Rate: {problemTickets ? `${problemTickets.escalation_rate.toFixed(1)}%` : 'N/A'}</p>
             </Card>
           </div>
+
+          <Card className="p-6">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-slate-900 dark:text-white flex items-center">
+                  <Database className="w-4 h-4 mr-2 text-blue-500"/> Vector Space Map
+                </h3>
+                <p className="text-xs text-slate-500">2D projection of ticket embeddings and clusters</p>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span>Label by</span>
+                <select
+                  value={vectorLabelBy}
+                  onChange={(event) => setVectorLabelBy(event.target.value as AnalyticsVectorLabelBy)}
+                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  <option value="category">Category</option>
+                  <option value="assignment_group">Assignment Group</option>
+                  <option value="priority">Priority</option>
+                  <option value="state">State</option>
+                </select>
+              </div>
+            </div>
+            <div className="h-[420px]">
+              {vectorMapError ? (
+                <div className="h-full flex items-center justify-center text-slate-400">
+                  Unable to load vector map.
+                </div>
+              ) : (
+                <VectorMap
+                  data={vectorMap}
+                  isLoading={vectorMapLoading}
+                  onPointClick={handleVectorPointClick}
+                />
+              )}
+            </div>
+            <div className="mt-3 text-xs text-slate-500">Click a point to open ticket details.</div>
+          </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="p-6">
@@ -1027,7 +1109,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                         tickLine={false}
                         axisLine={false}
                         tickMargin={8}
-                        tickFormatter={(value) => value.slice(5)}
+                        tickFormatter={(value) => (value ?? '').slice(5)}
                         tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
                       />
                       <YAxis tickLine={false} axisLine={false} tickMargin={8} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
@@ -1080,10 +1162,10 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                 <span className="text-xs text-slate-500 dark:text-slate-400">Query Expansion</span>
               </div>
               <p className="text-2xl font-bold text-slate-900 dark:text-white">
-                {modelAccuracy ? `${(modelAccuracy.query_expansion_hit_rate.with_expansion * 100).toFixed(0)}%` : 'N/A'}
+                {modelAccuracy ? `${modelAccuracy.query_expansion_hit_rate.with_expansion.toFixed(0)}%` : 'N/A'}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                vs {modelAccuracy ? `${(modelAccuracy.query_expansion_hit_rate.without_expansion * 100).toFixed(0)}%` : 'N/A'} without
+                vs {modelAccuracy ? `${modelAccuracy.query_expansion_hit_rate.without_expansion.toFixed(0)}%` : 'N/A'} without
               </p>
             </Card>
           </div>
@@ -1121,7 +1203,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                 <p className="text-xs text-slate-500">Percent of high-confidence matches</p>
               </div>
               <GaugeChart
-                value={modelAccuracy ? Math.round(modelAccuracy.high_confidence_rate * 100) : 0}
+                value={modelAccuracy ? Math.round(modelAccuracy.high_confidence_rate) : 0}
                 label="High Confidence"
                 thresholds={{ good: 70, warning: 50 }}
               />
@@ -1141,7 +1223,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                   <ResponsiveContainer width="100%" height="100%">
                     <RechartsLineChart data={graphFeedbackSeries}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
-                      <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value) => value.slice(5)} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                      <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value) => (value ?? '').slice(5)} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
                       <YAxis tickLine={false} axisLine={false} tickMargin={8} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
                       <RechartsTooltip />
                       <Legend />
@@ -1243,7 +1325,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                 </div>
                 <span className="text-xs text-slate-500 dark:text-slate-400">Recurrence</span>
               </div>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white">{(recurrenceRate * 100).toFixed(1)}%</p>
+              <p className="text-2xl font-bold text-slate-900 dark:text-white">{recurrenceRate.toFixed(1)}%</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">Recurring incident rate</p>
             </Card>
           </div>
@@ -1335,7 +1417,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                     <TableRow key={system.system}>
                       <TableCell className="font-medium">{system.system}</TableCell>
                       <TableCell>{system.ticket_count}</TableCell>
-                      <TableCell>{(system.critical_pct * 100).toFixed(0)}%</TableCell>
+                      <TableCell>{system.critical_pct.toFixed(0)}%</TableCell>
                       <TableCell>{system.avg_resolution_hours.toFixed(1)}h</TableCell>
                       <TableCell>{system.sla_compliance_pct.toFixed(0)}%</TableCell>
                       <TableCell>{system.problem_ticket_count}</TableCell>
@@ -1410,7 +1492,7 @@ export const AnalyticsPage = ({ addToast }: AnalyticsPageProps) => {
                   <ResponsiveContainer width="100%" height="100%">
                     <RechartsLineChart data={predictionForecast}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
-                      <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value) => value.slice(5)} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                      <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(value) => (value ?? '').slice(5)} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
                       <YAxis tickLine={false} axisLine={false} tickMargin={8} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
                       <RechartsTooltip />
                       <Legend />

@@ -1,15 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { AlertTriangle, ArrowRight, CheckCircle2 } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import type { CreateProblemTicketForm, ProblemCategory, Ticket, TicketPriority } from '@/types';
+import { useCreateProblemTicket, useTickets } from '@/services';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { useCreateProblemTicket, useTickets } from '@/services';
-import type { CreateProblemTicketForm, ProblemCategory, Ticket, TicketPriority } from '@/types';
 
 interface CreateProblemTicketDialogProps {
   isOpen: boolean;
@@ -88,46 +88,29 @@ const buildInitialForm = (tickets: Ticket[], summary?: string): CreateProblemTic
   root_cause_summary: '',
 });
 
-export const CreateProblemTicketDialog = ({
-  isOpen,
-  onClose,
+const CreateProblemTicketDialogContent = ({
   preselectedTickets,
   prefillSummary,
   onSuccess,
+  onClose,
   addToast,
-}: CreateProblemTicketDialogProps) => {
+}: Omit<CreateProblemTicketDialogProps, 'isOpen'>) => {
   const [step, setStep] = useState<1 | 2>(1);
-  const [selectedTicketIds, setSelectedTicketIds] = useState<string[]>([]);
+  const [selectedTicketIds, setSelectedTicketIds] = useState<string[]>(() =>
+    preselectedTickets.map((ticket) => ticket.id)
+  );
   const [formData, setFormData] = useState<CreateProblemTicketForm>(() =>
-    buildInitialForm(preselectedTickets)
+    buildInitialForm(preselectedTickets, prefillSummary)
   );
 
   const { data: ticketsData } = useTickets({ limit: 2000, page: 1 });
   const createProblemTicket = useCreateProblemTicket();
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const initialForm = buildInitialForm(preselectedTickets, prefillSummary);
-    setStep(1);
-    setSelectedTicketIds(initialForm.affected_ticket_ids);
-    setFormData(initialForm);
-  }, [isOpen, preselectedTickets, prefillSummary]);
 
   const allTickets = ticketsData?.tickets ?? preselectedTickets;
   const previewNumber = getNextProblemNumberPreview(allTickets);
   const selectedTickets = preselectedTickets.filter((ticket) =>
     selectedTicketIds.includes(ticket.id)
   );
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setFormData((current) => ({
-      ...current,
-      priority: getHighestPriority(selectedTickets),
-      assigned_group: getMostCommonGroup(selectedTickets),
-      affected_ticket_ids: selectedTicketIds,
-    }));
-  }, [isOpen, selectedTicketIds, selectedTickets]);
 
   const validationErrors = {
     tickets: selectedTicketIds.length < 2 ? 'Select at least 2 tickets.' : '',
@@ -144,6 +127,13 @@ export const CreateProblemTicketDialog = ({
       const next = prev.includes(ticketId)
         ? prev.filter((id) => id !== ticketId)
         : [...prev, ticketId];
+      const nextSelected = preselectedTickets.filter((ticket) => next.includes(ticket.id));
+      setFormData((current) => ({
+        ...current,
+        priority: getHighestPriority(nextSelected),
+        assigned_group: getMostCommonGroup(nextSelected),
+        affected_ticket_ids: next,
+      }));
       return next;
     });
   };
@@ -162,12 +152,13 @@ export const CreateProblemTicketDialog = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden p-0 bg-white dark:bg-slate-950">
-        <div className="max-h-[90vh] overflow-y-auto p-6 space-y-6">
-          <DialogHeader>
-            <DialogTitle>Create Problem Ticket</DialogTitle>
-          </DialogHeader>
+    <div className="max-h-[90vh] overflow-y-auto p-6 space-y-6">
+      <DialogHeader>
+        <DialogTitle>Create Problem Ticket</DialogTitle>
+        <DialogDescription>
+          Review related incidents, capture the problem summary, and create a linked problem record for demo analysis.
+        </DialogDescription>
+      </DialogHeader>
           <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
             <span>Step {step} of 2 - {step === 1 ? 'Tickets & Details' : 'Review & Confirm'}</span>
             <div className="flex items-center gap-2">
@@ -355,17 +346,17 @@ export const CreateProblemTicketDialog = ({
                   Back
                 </Button>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleCreate('create')}
-                    disabled={createProblemTicket.isPending}
-                  >
-                    Create
-                  </Button>
-                  <Button
-                    onClick={() => handleCreate('analyze')}
-                    disabled={createProblemTicket.isPending}
-                  >
+                <Button
+                  variant="outline"
+                  onClick={() => handleCreate('create')}
+                  disabled={createProblemTicket.isPending}
+                >
+                  Create
+                </Button>
+                <Button
+                  onClick={() => handleCreate('analyze')}
+                  disabled={createProblemTicket.isPending}
+                >
                     <CheckCircle2 className="w-4 h-4 mr-2" />
                     Create & Analyze
                   </Button>
@@ -373,7 +364,35 @@ export const CreateProblemTicketDialog = ({
               </div>
             </div>
           )}
-        </div>
+    </div>
+  );
+};
+
+export const CreateProblemTicketDialog = ({
+  isOpen,
+  onClose,
+  preselectedTickets,
+  prefillSummary,
+  onSuccess,
+  addToast,
+}: CreateProblemTicketDialogProps) => {
+  const resetKey = isOpen
+    ? `open-${preselectedTickets.map((ticket) => ticket.id).join('|')}-${prefillSummary ?? ''}`
+    : 'closed';
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden p-0 bg-white dark:bg-slate-950">
+        {isOpen && (
+          <CreateProblemTicketDialogContent
+            key={resetKey}
+            preselectedTickets={preselectedTickets}
+            prefillSummary={prefillSummary}
+            onSuccess={onSuccess}
+            onClose={onClose}
+            addToast={addToast}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

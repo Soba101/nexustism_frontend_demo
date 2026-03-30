@@ -84,6 +84,15 @@ export interface UserPreferences {
   uiDensity: 'comfortable' | 'compact';
 }
 
+/** Embedding coverage reported by GET /api/data/status */
+export interface DataStatus {
+  total_tickets: number;
+  embedded_tickets: number;
+  pending_tickets: number;
+  last_embedded_at: string | null;
+  last_loaded_at: string | null;
+}
+
 /**
  * Visual cluster grouping for causal graph nodes
  * @property x, y - Center coordinates for force-directed layout
@@ -210,4 +219,85 @@ export interface AnalyticsRootCauses {
   top_root_causes: Array<{ cause: string; count: number }>;
   graph_depth_histogram: Array<{ depth: number; count: number }>;
   change_related_pct: number;
+}
+
+export type AnalyticsVectorLabelBy = 'category' | 'assignment_group' | 'priority' | 'state';
+
+export interface AnalyticsVectorPoint {
+  id: string;
+  number: string;
+  short_description: string;
+  category: string;
+  priority?: TicketPriority;
+  state?: TicketState;
+  assignment_group?: string;
+  opened_at?: string | null;
+  label: string;
+  x: number;
+  y: number;
+}
+
+export interface AnalyticsVectorMap {
+  period: AnalyticsPeriod;
+  label_by: AnalyticsVectorLabelBy;
+  projection: string;
+  sample_size: number;
+  points: AnalyticsVectorPoint[];
+}
+
+// ---------------------------------------------------------------------------
+// ServiceNow Configuration Types
+// ---------------------------------------------------------------------------
+
+export type AuthMethod = 'basic' | 'oauth';
+export type SyncType = 'full' | 'incremental';
+export type SyncStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type UserRole = 'user' | 'admin';
+
+export interface ServiceNowConfig {
+  instance_url: string;
+  auth_method: AuthMethod;
+  username: string;
+  is_configured: boolean;
+  last_test_at: string | null;
+  last_test_success: boolean | null;
+  last_test_message: string | null;
+}
+
+export interface ServiceNowConfigForm {
+  instance_url: string;
+  auth_method: AuthMethod;
+  username: string;
+  password: string;
+  client_id?: string;
+  client_secret?: string;
+}
+
+export interface ServiceNowTestStep {
+  name: string;
+  status: 'passed' | 'failed' | 'skipped';
+  message: string;
+}
+
+export interface ServiceNowTestResult {
+  success: boolean;
+  steps: ServiceNowTestStep[];
+  error?: string;
+}
+
+export interface ServiceNowSyncStatusItem {
+  id: number;
+  sync_type: SyncType;
+  status: SyncStatus;
+  started_at: string | null;
+  completed_at: string | null;
+  records_processed: number;
+  records_failed: number;
+  error_message: string | null;
+  triggered_by: string | null;
+}
+
+export interface UserRoleInfo {
+  user_id: string;
+  role: UserRole;
 }

@@ -1,11 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase, getSession } from '@/lib/supabase';
-import { useAuthStore } from '@/stores/authStore';
 import type {
   Ticket,
   GraphNode,
   GraphEdge,
   UserPreferences,
+  CreateProblemTicketForm,
   AnalyticsDuplicates,
   AnalyticsIsolation,
   AnalyticsModelAccuracy,
@@ -14,8 +13,21 @@ import type {
   AnalyticsTeamWorkflow,
   AnalyticsPredictions,
   AnalyticsRootCauses,
+  AnalyticsVectorMap,
+  AnalyticsVectorLabelBy,
   AnalyticsPeriod,
+  DataStatus,
+  ServiceNowConfig,
+  ServiceNowConfigForm,
+  ServiceNowTestResult,
+  ServiceNowSyncStatusItem,
+  SyncType,
+  UserRoleInfo,
 } from '@/types';
+import { useAuthStore } from '@/stores/authStore';
+import { demoApiRequest } from '@/data/demoApi';
+import { IS_STANDALONE_DEMO } from '@/lib/demoMode';
+import { getSession } from '@/lib/supabase';
 
 const resolveApiBaseUrl = () => {
   const localUrl =
@@ -35,6 +47,17 @@ const resolveApiBaseUrl = () => {
 
 const API_BASE_URL = resolveApiBaseUrl();
 
+const getDatasetMode = () => useAuthStore.getState().datasetMode;
+
+const requireProdDataset = (action: string) => {
+  if (IS_STANDALONE_DEMO) {
+    return;
+  }
+  if (getDatasetMode() === 'demo') {
+    throw new Error(`${action} is unavailable in the demo dataset.`);
+  }
+};
+
 /**
  * Generic fetch wrapper with error handling
  */
@@ -42,9 +65,13 @@ async function fetchAPI<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
+  if (IS_STANDALONE_DEMO) {
+    return demoApiRequest<T>(endpoint, options);
+  }
+
   const session = await getSession();
   const token = session?.access_token;
-  const datasetMode = useAuthStore.getState().datasetMode;
+  const datasetMode = getDatasetMode();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -84,6 +111,10 @@ type BackendSearchResult = {
   short_description: string;
   description: string;
   category: string;
+  priority?: string;
+  state?: string;
+  assignment_group?: string;
+  opened_at?: string;
   similarity_score: number;
   rrf_score?: number;
   rerank_score?: number;
@@ -126,10 +157,10 @@ const mapSearchResultToTicket = (result: BackendSearchResult): Ticket => {
     short_description: result.short_description,
     description: result.description,
     category: result.category || 'General',
-    priority: 'Medium',
-    state: 'New',
-    opened_at: new Date().toISOString(),
-    assigned_group: 'Unassigned',
+    priority: (result.priority as Ticket['priority']) || 'Medium',
+    state: (result.state as Ticket['state']) || 'New',
+    opened_at: result.opened_at || new Date().toISOString(),
+    assigned_group: result.assignment_group || 'Unassigned',
     similarity_score: Math.round(normalizedScore),
     related_ids: [],
   };
@@ -211,6 +242,7 @@ export const useTicketAuditLog = (ticketId: string) => {
 
 export const useUpdateTicket = () => {
   const queryClient = useQueryClient();
+  const datasetMode = useAuthStore((state) => state.datasetMode);
 
   return useMutation({
     mutationFn: async ({
@@ -220,6 +252,7 @@ export const useUpdateTicket = () => {
       ticketId: string;
       data: Partial<Ticket>;
     }) => {
+      requireProdDataset('Ticket updates');
       return fetchAPI<Ticket>(`/api/tickets/${ticketId}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
@@ -227,7 +260,7 @@ export const useUpdateTicket = () => {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
-      queryClient.invalidateQueries({ queryKey: ['ticket', data.id] });
+      queryClient.invalidateQueries({ queryKey: ['ticket', datasetMode, data.id] });
     },
   });
 };
@@ -239,6 +272,37 @@ export const useRelatedTickets = (ticketId: string) => {
     queryFn: () => fetchAPI<Ticket[]>(`/api/tickets/${ticketId}/related`),
     staleTime: 5 * 60 * 1000,
     enabled: !!ticketId,
+  });
+};
+
+// ============================================================================
+// DATA STATUS + EMBEDDING MANAGEMENT
+// ============================================================================
+
+export const useDataStatus = () => {
+  const { datasetMode } = useAuthStore();
+  return useQuery({
+    queryKey: ['data-status', datasetMode],
+    queryFn: () => fetchAPI<DataStatus>('/api/data/status'),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+};
+
+export const useEmbedPending = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => {
+      requireProdDataset('Re-indexing tickets');
+      return fetchAPI<{ processed: number; failed: number; remaining: number }>(
+        '/api/data/embed-pending',
+        { method: 'POST' },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['data-status'] });
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+    },
   });
 };
 
@@ -256,6 +320,10 @@ export const useAnalyticsMetrics = (period: AnalyticsPeriod = '30d') => {
         resolvedTickets: number;
         avgResolutionTime: number;
         adoptionRate: number;
+        trendTotalTickets?: number;
+        trendResolvedTickets?: number;
+        trendAvgResolutionTime?: number;
+        trendSlaCompliance?: number;
       }>(`/api/analytics/metrics?period=${period}`),
     staleTime: 10 * 60 * 1000,
   });
@@ -395,6 +463,29 @@ export const useAnalyticsRootCauses = (period: AnalyticsPeriod = '30d') => {
   });
 };
 
+type VectorMapOptions = {
+  limit?: number;
+  labelBy?: AnalyticsVectorLabelBy;
+};
+
+export const useAnalyticsVectorMap = (
+  period: AnalyticsPeriod = '30d',
+  options?: VectorMapOptions
+) => {
+  const { datasetMode } = useAuthStore();
+  const limit = options?.limit ?? 500;
+  const labelBy = options?.labelBy ?? 'category';
+
+  return useQuery({
+    queryKey: ['analytics', datasetMode, 'vector-map', period, limit, labelBy],
+    queryFn: () =>
+      fetchAPI<AnalyticsVectorMap>(
+        `/api/analytics/vector-map?period=${period}&limit=${limit}&label_by=${labelBy}`
+      ),
+    staleTime: 10 * 60 * 1000,
+  });
+};
+
 // ============================================================================
 // SEARCH QUERIES
 // ============================================================================
@@ -501,8 +592,9 @@ export const useCausalSearch = (
 // ============================================================================
 
 export const useCausalGraph = (ticketId: string) => {
+  const { datasetMode } = useAuthStore();
   return useQuery({
-    queryKey: ['causal-graph', ticketId],
+    queryKey: ['causal-graph', datasetMode, ticketId],
     queryFn: () =>
       fetchAPI<{ nodes: GraphNode[]; edges: GraphEdge[] }>(
         `/api/causal-graph/${ticketId}`
@@ -523,6 +615,7 @@ export const useSubmitGraphFeedback = () => {
       confidence: number;
       evidence: string;
     }) => {
+      requireProdDataset('Graph feedback');
       return fetchAPI<{ success: boolean }>(
         `/api/feedback/graph`,
         {
@@ -542,6 +635,7 @@ export const useFlagGraphIncorrect = () => {
 
   return useMutation({
     mutationFn: async (data: { ticketId: string; nodeId: string }) => {
+      requireProdDataset('Graph feedback');
       return fetchAPI<{ success: boolean }>(
         `/api/feedback/graph/flag-incorrect`,
         {
@@ -561,8 +655,9 @@ export const useFlagGraphIncorrect = () => {
 // ============================================================================
 
 export const useUserPreferences = () => {
+  const { user } = useAuthStore();
   return useQuery({
-    queryKey: ['user', 'preferences'],
+    queryKey: ['user', 'preferences', user?.email ?? 'anonymous'],
     queryFn: () =>
       fetchAPI<UserPreferences>(`/api/user/preferences`),
     staleTime: Infinity, // Doesn't change often
@@ -585,6 +680,46 @@ export const useUpdateUserPreferences = () => {
 };
 
 // ============================================================================
+// PROBLEM TICKET QUERIES
+// ============================================================================
+
+export const useAffectedTickets = (problemId: string) => {
+  const { datasetMode } = useAuthStore();
+  return useQuery({
+    queryKey: ['tickets', datasetMode, problemId, 'affected'],
+    queryFn: () => fetchAPI<Ticket[]>(`/api/tickets/${problemId}/related`),
+    staleTime: 5 * 60 * 1000,
+    enabled: !!problemId,
+  });
+};
+
+export const useCreateProblemTicket = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (form: CreateProblemTicketForm) => {
+      requireProdDataset('Problem ticket creation');
+      return fetchAPI<Ticket>(`/api/tickets`, {
+        method: 'POST',
+        body: JSON.stringify({
+          short_description: form.short_description,
+          description: form.description,
+          category: form.problem_category || 'Problem Investigation',
+          priority: form.priority,
+          assignment_group: form.assigned_group,
+          state: 'New',
+          ticket_type: 'problem',
+          affected_ticket_ids: form.affected_ticket_ids,
+          root_cause_summary: form.root_cause_summary,
+        }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+    },
+  });
+};
+
+// ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
 
@@ -595,5 +730,108 @@ export const exportTicketsAsCSV = async (ticketIds: string[]) => {
   return fetchAPI<Blob>(`/api/export/csv`, {
     method: 'POST',
     body: JSON.stringify({ ticketIds }),
+  });
+};
+
+// ============================================================================
+// SERVICENOW CONFIGURATION (Admin)
+// ============================================================================
+
+/**
+ * Get current user's role
+ */
+export const useUserRole = () => {
+  const { user } = useAuthStore();
+  return useQuery({
+    queryKey: ['user', 'role', user?.email ?? 'anonymous'],
+    queryFn: () => fetchAPI<UserRoleInfo>('/api/user/role'),
+    staleTime: Infinity,
+  });
+};
+
+/**
+ * Get ServiceNow configuration (admin only)
+ */
+export const useServiceNowConfig = (enabled: boolean = true) => {
+  const { user, datasetMode } = useAuthStore();
+  return useQuery({
+    queryKey: ['admin', 'servicenow', 'config', datasetMode, user?.email ?? 'anonymous'],
+    queryFn: () => fetchAPI<ServiceNowConfig>('/api/admin/servicenow/config'),
+    staleTime: 30_000,
+    enabled,
+  });
+};
+
+/**
+ * Update ServiceNow configuration (admin only)
+ */
+export const useUpdateServiceNowConfig = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (config: ServiceNowConfigForm) => {
+      requireProdDataset('ServiceNow configuration');
+      return fetchAPI<{ success: boolean; message: string }>('/api/admin/servicenow/config', {
+        method: 'PUT',
+        body: JSON.stringify(config),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'servicenow', 'config'] });
+    },
+  });
+};
+
+/**
+ * Test ServiceNow connection (admin only)
+ */
+export const useTestServiceNowConnection = () => {
+  return useMutation({
+    mutationFn: (config?: ServiceNowConfigForm) => {
+      requireProdDataset('ServiceNow connection testing');
+      return fetchAPI<ServiceNowTestResult>('/api/admin/servicenow/test', {
+        method: 'POST',
+        body: config ? JSON.stringify(config) : '{}',
+      });
+    },
+  });
+};
+
+/**
+ * Get ServiceNow sync status history
+ */
+export const useServiceNowSyncStatus = (enabled: boolean = true) => {
+  const { user, datasetMode } = useAuthStore();
+  return useQuery({
+    queryKey: ['admin', 'servicenow', 'sync-status', datasetMode, user?.email ?? 'anonymous'],
+    queryFn: () => fetchAPI<ServiceNowSyncStatusItem[]>('/api/admin/servicenow/sync/status'),
+    staleTime: 10_000,
+    refetchInterval: (query) => {
+      // Poll every 5s if there's a running sync
+      const data = query.state.data;
+      const hasRunning = data?.some((s) => s.status === 'running');
+      return hasRunning ? 5_000 : 30_000;
+    },
+    enabled,
+  });
+};
+
+/**
+ * Trigger ServiceNow sync (admin only)
+ */
+export const useTriggerServiceNowSync = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (syncType: SyncType) => {
+      requireProdDataset('ServiceNow sync');
+      return fetchAPI<{ job_id: number; message: string; command: string }>('/api/admin/servicenow/sync/trigger', {
+        method: 'POST',
+        body: JSON.stringify({ sync_type: syncType }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'servicenow', 'sync-status'] });
+    },
   });
 };

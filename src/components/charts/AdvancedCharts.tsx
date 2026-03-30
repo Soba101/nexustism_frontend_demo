@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import * as React from "react";
-import { memo, useMemo } from "react";
 import { Cell, ResponsiveContainer, Funnel, FunnelChart, Tooltip } from "recharts";
 
 // SLA Gauge Chart Component
@@ -11,7 +10,7 @@ interface GaugeChartProps {
   thresholds?: { good: number; warning: number }; // e.g., { good: 90, warning: 70 }
 }
 
-export const GaugeChart = memo(({ value, label = "Compliance", thresholds = { good: 90, warning: 70 } }: GaugeChartProps) => {
+export function GaugeChart({ value, label = "Compliance", thresholds = { good: 90, warning: 70 } }: GaugeChartProps) {
   const getColor = (val: number) => {
     if (val >= thresholds.good) return '#10b981'; // green
     if (val >= thresholds.warning) return '#f59e0b'; // yellow
@@ -66,7 +65,7 @@ export const GaugeChart = memo(({ value, label = "Compliance", thresholds = { go
       </div>
     </div>
   );
-});
+}
 
 GaugeChart.displayName = 'GaugeChart';
 
@@ -82,7 +81,7 @@ interface HeatmapProps {
   onClick?: (cell: HeatmapCell) => void;
 }
 
-export const Heatmap = memo(({ data, onClick }: HeatmapProps) => {
+export function Heatmap({ data, onClick }: HeatmapProps) {
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const hours = Array.from({ length: 24 }, (_, i) => i);
   
@@ -99,14 +98,14 @@ export const Heatmap = memo(({ data, onClick }: HeatmapProps) => {
   const maxValue = Math.max(...data.map(d => d.value), 1);
 
   // Group data by day and hour
-  const heatmapData = useMemo(() => {
+  const heatmapData = (() => {
     const map: Record<string, number> = {};
     data.forEach(cell => {
       const key = `${cell.day}-${cell.hour}`;
       map[key] = cell.value;
     });
     return map;
-  }, [data]);
+  })();
 
   return (
     <div className="w-full overflow-hidden">
@@ -155,7 +154,7 @@ export const Heatmap = memo(({ data, onClick }: HeatmapProps) => {
       </div>
     </div>
   );
-});
+}
 
 Heatmap.displayName = 'Heatmap';
 
@@ -171,12 +170,12 @@ interface FunnelChartProps {
   onClick?: (data: FunnelData) => void;
 }
 
-export const FunnelChartComponent = memo(({ data, onClick }: FunnelChartProps) => {
+export function FunnelChartComponent({ data, onClick }: FunnelChartProps) {
   const total = data[0]?.value || 1;
 
   return (
-    <div className="w-full h-full">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="w-full h-full min-h-[200px]">
+      <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
         <FunnelChart>
           <Tooltip 
             content={({ active, payload }) => {
@@ -209,7 +208,7 @@ export const FunnelChartComponent = memo(({ data, onClick }: FunnelChartProps) =
       </ResponsiveContainer>
     </div>
   );
-});
+}
 
 FunnelChartComponent.displayName = 'FunnelChartComponent';
 
@@ -226,7 +225,7 @@ interface StackedBarChartProps {
   onClick?: (team: string) => void;
 }
 
-export const StackedBarChart = memo(({ data, onClick }: StackedBarChartProps) => {
+export function StackedBarChart({ data, onClick }: StackedBarChartProps) {
   return (
     <div className="space-y-4">
       {data.map((item) => {
@@ -288,7 +287,7 @@ export const StackedBarChart = memo(({ data, onClick }: StackedBarChartProps) =>
       </div>
     </div>
   );
-});
+}
 
 StackedBarChart.displayName = 'StackedBarChart';
 

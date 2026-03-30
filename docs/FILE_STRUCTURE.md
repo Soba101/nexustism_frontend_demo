@@ -36,7 +36,7 @@ nexustism_frontend_new/
 │  │  └─ branding.ts
 │  │
 │  ├─ data/
-│  │  └─ mockTickets.ts
+│  │  └─ (static helpers)
 │  │
 │  ├─ features/
 │  │  ├─ analytics/

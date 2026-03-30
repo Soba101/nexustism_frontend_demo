@@ -1,24 +1,22 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { Search, Filter, Menu, ChevronRight, ChevronLeft, Activity, X, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Search, Filter, Menu, ChevronRight, ChevronLeft, Activity, X, Loader2, Info } from 'lucide-react';
+import type { Ticket, TicketPriority } from '@/types';
+import { useUIStore } from '@/stores/uiStore';
 import { useTickets, useSemanticSearch, useSearchSuggestions } from '@/services';
 import { calculateResolutionTime } from '@/utils/helpers';
-import type { Ticket, TicketPriority } from '@/types';
 import { CreateProblemTicketDialog } from '@/features/problems';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
-interface SearchPageProps {
-  onSelectIncident: (incident: Ticket) => void;
-  onNavigateToRCA: (ticket: Ticket) => void;
-  setIsMobileOpen: (open: boolean) => void;
-  addToast: (msg: string, type: 'success' | 'info' | 'error') => void;
-}
-
-export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen, addToast }: SearchPageProps) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+export const SearchPage = () => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { setSelectedTicket, setSelectedTicketForAnalysis, setIsMobileOpen, addToast } = useUIStore();
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get('q') ?? '');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(() => searchParams.get('q') ?? '');
   const [suggestionQuery, setSuggestionQuery] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedPriorities, setSelectedPriorities] = useState<TicketPriority[]>([]);
@@ -35,6 +33,7 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const browseFetchLimit = 100;
 
   // Filter States
   const [dateRange, setDateRange] = useState('all');
@@ -49,6 +48,16 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
     }, 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  // Close Advanced Filter modal on Escape key
+  useEffect(() => {
+    if (!isFilterModalOpen) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsFilterModalOpen(false);
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, [isFilterModalOpen]);
 
   // Debounce suggestions separately to reduce backend chatter
   useEffect(() => {
@@ -84,8 +93,8 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
     category: selectedCategories.length === 1 ? selectedCategories[0] : undefined,
     priority: selectedPriorities.length === 1 ? selectedPriorities[0] : undefined,
     state: statusFilter !== 'all' ? statusFilter : undefined,
-    page: currentPage,
-    limit: itemsPerPage,
+    page: 1,
+    limit: browseFetchLimit,
   });
 
   // Suggestions hook
@@ -96,15 +105,15 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
   const error = isSemanticSearch ? searchError : ticketsError;
 
   // Get raw results from appropriate source
-  const rawResults = useMemo(() => {
+  const rawResults = (() => {
     if (isSemanticSearch) {
       return searchData?.results || [];
     }
     return ticketsData?.tickets || [];
-  }, [isSemanticSearch, searchData, ticketsData]);
+  })();
 
   // Apply client-side filters on top of API results (for multi-select filters)
-  const filteredIncidents = useMemo(() => {
+  const filteredIncidents = (() => {
     let results = rawResults;
 
     // Category Filter (multi-select)
@@ -131,24 +140,19 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
     }
 
     return results;
-  }, [rawResults, selectedCategories, selectedPriorities, sortBy]);
+  })();
 
-  const problemTicketIds = useMemo(() => {
-    return new Set(rawResults.filter((ticket) => ticket.ticket_type === 'problem').map((ticket) => ticket.id));
-  }, [rawResults]);
+  const problemTicketIds = new Set(rawResults.filter((ticket) => ticket.ticket_type === 'problem').map((ticket) => ticket.id));
 
-  const totalResults = useMemo(() => {
+  const totalResults = (() => {
     if (isSemanticSearch) {
       return searchData?.total ?? filteredIncidents.length;
     }
-    return ticketsData?.total ?? filteredIncidents.length;
-  }, [isSemanticSearch, searchData, ticketsData, filteredIncidents.length]);
+    return filteredIncidents.length;
+  })();
 
   // Get unique assignment groups from current results
-  const assignmentGroups = useMemo(() => {
-    const groups = [...new Set(rawResults.map(t => t.assigned_group).filter(Boolean))];
-    return groups.sort();
-  }, [rawResults]);
+  const assignmentGroups = [...new Set(rawResults.map(t => t.assigned_group).filter(Boolean))].sort();
 
   const categories = ['Network', 'Software', 'Hardware', 'Database', 'Access'];
   const priorities: TicketPriority[] = ['Critical', 'High', 'Medium', 'Low'];
@@ -200,14 +204,11 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
   ].filter(Boolean).length;
 
   // Pagination Logic
-  const totalPages = useMemo(() => {
-    if (totalResults <= 0) {
-      return 0;
-    }
-    return Math.ceil(totalResults / itemsPerPage);
-  }, [totalResults, itemsPerPage]);
+  const totalPages = totalResults <= 0 ? 0 : Math.ceil(totalResults / itemsPerPage);
   
-  const paginatedIncidents = useMemo(() => filteredIncidents, [filteredIncidents]);
+  const paginatedIncidents = isSemanticSearch
+    ? filteredIncidents
+    : filteredIncidents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const pageStart = paginatedIncidents.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0;
   const pageEnd = paginatedIncidents.length > 0
@@ -218,7 +219,7 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
     return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   };
 
-  const problemCandidates = useMemo(() => {
+  const problemCandidates = (() => {
     const candidateSource = filteredIncidents.filter((ticket) => ticket.ticket_type !== 'problem');
     if (candidateSource.length < PROBLEM_SUGGESTION_MIN) {
       return [];
@@ -249,7 +250,10 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
       const relatedTickets = relatedIds
         .map((id) => ticketById.get(id))
         .filter((item): item is Ticket => Boolean(item));
-      const groupTickets = [ticket, ...relatedTickets];
+      const groupTickets = [...new Map([ticket, ...relatedTickets].map((item) => [item.id, item])).values()];
+      if (groupTickets.length < PROBLEM_SUGGESTION_MIN) {
+        continue;
+      }
       if (hasProblemLink(groupTickets)) {
         continue;
       }
@@ -299,7 +303,7 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
     }
 
     return candidates.sort((a, b) => b.count - a.count).slice(0, 5);
-  }, [filteredIncidents, problemTicketIds]);
+  })();
 
   const handleCreateProblem = (tickets: Ticket[], summary: string) => {
     const alreadyLinked = tickets.some((ticket) =>
@@ -317,7 +321,8 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
   const handleProblemCreated = (problemTicket: Ticket, action?: 'create' | 'analyze') => {
     addToast(`${problemTicket.number} created successfully`, 'success');
     if (action === 'analyze') {
-      onNavigateToRCA(problemTicket);
+      setSelectedTicketForAnalysis(problemTicket);
+      router.push('/root-cause');
     }
   };
 
@@ -492,7 +497,7 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
              </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,4fr)_minmax(0,1fr)]">
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
              {/* Loading State */}
              {isLoading ? (
@@ -522,32 +527,40 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
                  <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Try broadening your search terms or removing filters.</p>
                </div>
              ) : (
-               <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                 <div className="hidden lg:grid grid-cols-12 gap-4 p-4 bg-slate-50/50 dark:bg-slate-900/50 text-xs font-medium text-slate-500 dark:text-slate-400">
-                    <div className="col-span-2">Ticket ID</div>
-                    <div className="col-span-1">Priority</div>
-                    <div className="col-span-3">Summary</div>
-                    <div className="col-span-2">Category</div>
-                    <div className="col-span-2">Resolution</div>
-                    <div className="col-span-1">Match</div>
-                    <div className="col-span-1 text-right">Actions</div>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                <div className="hidden lg:grid lg:grid-cols-[minmax(140px,1.1fr)_minmax(120px,1fr)_minmax(220px,2.2fr)_minmax(150px,1.3fr)_minmax(120px,1fr)_minmax(70px,0.6fr)_minmax(50px,0.4fr)] gap-3 p-4 bg-slate-50/50 dark:bg-slate-900/50 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  <div>Ticket ID</div>
+                  <div>Priority</div>
+                  <div>Summary</div>
+                  <div>Category</div>
+                  <div>Resolution</div>
+                  <div className="flex items-center gap-1">
+                    Match
+                    <span
+                      className="cursor-help"
+                      title="Relevance score based on your search query"
+                    >
+                      <Info className="w-3 h-3 text-slate-400" />
+                    </span>
+                  </div>
+                  <div className="text-right">Actions</div>
                  </div>
 
                  {paginatedIncidents.map((incident) => (
                    <div 
                      key={incident.id} 
-                     className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors p-4 lg:grid lg:grid-cols-12 lg:gap-4 items-center cursor-pointer relative"
-                     onClick={() => onSelectIncident(incident)}
+                     className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors p-4 lg:grid lg:grid-cols-[minmax(140px,1.1fr)_minmax(120px,1fr)_minmax(220px,2.2fr)_minmax(150px,1.3fr)_minmax(120px,1fr)_minmax(70px,0.6fr)_minmax(50px,0.4fr)] lg:gap-3 items-center cursor-pointer relative"
+                     onClick={() => setSelectedTicket(incident)}
                    >
                       {/* Ticket Number & Status */}
-                     <div className="col-span-2 flex items-center gap-2 lg:gap-3 mb-2 lg:mb-0 min-w-0">
+                     <div className="flex items-center gap-2 lg:gap-3 mb-2 lg:mb-0 min-w-0">
                         <span className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
                           {incident.number}
                         </span>
                       </div>
 
                       {/* Priority */}
-                      <div className="col-span-1 hidden lg:flex items-center">
+                      <div className="hidden lg:flex items-center">
                         <div className="flex flex-col items-start gap-1">
                           <Badge variant="outline" className={priorityBadgeClassMap[incident.priority]}>
                             {incident.priority}
@@ -561,7 +574,7 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
                       </div>
 
                       {/* Summary */}
-                     <div className="col-span-3 mb-2 lg:mb-0 pr-4 min-w-0">
+                     <div className="mb-2 lg:mb-0 pr-4 min-w-0">
                          <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{incident.short_description}</p>
                          <div className="lg:hidden mt-1 flex gap-2">
                             <Badge variant="outline" className={priorityBadgeClassMap[incident.priority]}>
@@ -577,24 +590,35 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
                       </div>
 
                       {/* Category */}
-                      <div className="col-span-2 hidden lg:flex items-center text-sm text-slate-600 dark:text-slate-400">
+                      <div className="hidden lg:flex items-center text-sm text-slate-600 dark:text-slate-400">
                          {incident.category}
                       </div>
 
                       {/* Resolution Time */}
-                      <div className="col-span-2 hidden lg:flex items-center">
+                      <div className="hidden lg:flex items-center">
                         <Badge variant="outline" className="text-xs">
                           {calculateResolutionTime(incident.opened_at, incident.resolved_at)}
                         </Badge>
                       </div>
 
                       {/* Similarity Score */}
-                      <div className="col-span-1 hidden lg:flex items-center justify-center">
-                        <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">{incident.similarity_score}%</span>
+                      <div className="hidden lg:flex items-center justify-center">
+                        {isSemanticSearch ? (
+                          <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
+                            {incident.similarity_score ?? 0}%
+                          </span>
+                        ) : (
+                          <span
+                            className="text-xs text-slate-400 cursor-help"
+                            title="Enter a search query to see relevance scores"
+                          >
+                            N/A
+                          </span>
+                        )}
                       </div>
 
                       {/* Action */}
-                      <div className="col-span-1 flex justify-end">
+                      <div className="flex justify-end">
                          <Button variant="ghost" size="icon" className="text-slate-400 group-hover:text-blue-600 dark:text-slate-500 dark:group-hover:text-blue-400">
                             <ChevronRight className="w-5 h-5" />
                          </Button>
@@ -620,12 +644,12 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
                     <div
                       key={`${candidate.source}-${index}`}
                       className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
-                      onClick={() => onSelectIncident(candidate.tickets[0])}
+                      onClick={() => setSelectedTicket(candidate.tickets[0])}
                       role="button"
                       tabIndex={0}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter') {
-                          onSelectIncident(candidate.tickets[0]);
+                          setSelectedTicket(candidate.tickets[0]);
                         }
                       }}
                     >
@@ -698,10 +722,25 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
 
       {/* Advanced Filter Dialog */}
       {isFilterModalOpen && (
-      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-        <div className="bg-white dark:bg-slate-800 rounded-lg max-w-md w-full mx-4">
-          <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+      <div
+        className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+        onClick={() => setIsFilterModalOpen(false)}
+        onKeyDown={(e) => { if (e.key === 'Escape') setIsFilterModalOpen(false); }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Advanced Filters"
+        tabIndex={-1}
+      >
+        <div className="bg-white dark:bg-slate-800 rounded-lg max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+          <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Advanced Filters</h2>
+            <button
+              onClick={() => setIsFilterModalOpen(false)}
+              className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
+              aria-label="Close filters"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
         <div className="space-y-4">
            {/* Date Range */}
@@ -797,8 +836,8 @@ export const SearchPage = ({ onSelectIncident, onNavigateToRCA, setIsMobileOpen,
               setDateRange('all');
               setStatusFilter('all');
               setAssignmentFilter('all');
-              setQueryExpansion(false);
-              setReranking(false);
+              setQueryExpansion(true);
+              setReranking(true);
               resetPage();
             }}>Reset</Button>
             <Button onClick={() => {

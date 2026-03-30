@@ -1,5 +1,5 @@
-import type { NextConfig } from "next";
 import bundleAnalyzer from '@next/bundle-analyzer';
+import type { NextConfig } from "next";
 
 // Bundle analyzer setup (run with ANALYZE=true npm run build)
 const withBundleAnalyzer = bundleAnalyzer({
@@ -7,7 +7,7 @@ const withBundleAnalyzer = bundleAnalyzer({
 });
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  output: 'standalone',
   reactCompiler: true,
   allowedDevOrigins: [
     'http://localhost:3001',

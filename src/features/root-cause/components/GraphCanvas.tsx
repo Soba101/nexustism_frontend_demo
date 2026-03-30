@@ -187,7 +187,7 @@ export const GraphCanvas = ({
           const isSelected = selectedNodeId === node.id;
           const opacity = searchQuery && !isHighlighted ? 0.2 : 1;
 
-          // Node details from mock data
+          // Node details fallback
           const nodeDetails = node.details?.trim() ? node.details : node.label;
 
           return (

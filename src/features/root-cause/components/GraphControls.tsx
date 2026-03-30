@@ -1,7 +1,7 @@
 import { Move, ZoomOut, ZoomIn, Search, Hand, Pointer, Download } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/wrappers';
 import { Input } from '@/components/ui/input';
-import { useState } from 'react';
 
 interface GraphControlsProps {
   searchQuery: string;

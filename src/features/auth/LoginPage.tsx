@@ -2,12 +2,15 @@
 
 import { useState } from 'react';
 import { Activity, Mail, Lock, AlertCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/authStore';
+import { IS_STANDALONE_DEMO } from '@/lib/demoMode';
+import { Button } from '@/components/ui/button';
+
+const ADMIN_EMAIL = 'admin@admin.com';
 
 export const LoginPage = () => {
   const { login, error, isLoading } = useAuthStore();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(IS_STANDALONE_DEMO ? ADMIN_EMAIL : '');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
 
@@ -36,7 +39,9 @@ export const LoginPage = () => {
             <Activity className="w-10 h-10 text-white" />
           </div>
           <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">ITSM Nexus</h2>
-          <p className="mt-2 text-slate-500 dark:text-slate-400">Sign in to access ticket intelligence</p>
+          <p className="mt-2 text-slate-500 dark:text-slate-400">
+            Sign in to access ticket intelligence
+          </p>
         </div>
 
         {(error || localError) && (
@@ -45,18 +50,21 @@ export const LoginPage = () => {
             <p className="text-sm text-red-700 dark:text-red-300">{error || localError}</p>
           </div>
         )}
-        
+
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email Address</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Email Address
+              </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Mail className="h-5 w-5 text-slate-400" />
                 </div>
-                <input 
-                  type="email" 
-                  required 
+                <input
+                  type="email"
+                  required
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={isLoading}
@@ -66,19 +74,22 @@ export const LoginPage = () => {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Password
+              </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Lock className="h-5 w-5 text-slate-400" />
                 </div>
-                <input 
-                  type="password" 
-                  required 
+                <input
+                  type="password"
+                  required
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isLoading}
                   className="block w-full pl-10 pr-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors disabled:opacity-50"
-                  placeholder="••••••••"
+                  placeholder="password"
                 />
               </div>
             </div>
@@ -90,7 +101,7 @@ export const LoginPage = () => {
         </form>
 
         <p className="text-center text-xs text-slate-500 dark:text-slate-400 mt-6">
-          Demo credentials: admin@admin.com / password
+          Admin demo login: {ADMIN_EMAIL} / password
         </p>
       </div>
     </div>

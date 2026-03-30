@@ -1,7 +1,7 @@
 # AI Agent Instructions for ITSM Nexus Frontend
 
 ## Project Context
-**ITSM Nexus** is an AI-powered IT Service Management dashboard with semantic ticket search, root cause analysis via causal graphs, and analytics. Frontend-only (mock data). Single-page app using React 19 + Next.js 16 with Tailwind CSS.
+**ITSM Nexus** is an AI-powered IT Service Management dashboard with semantic ticket search, root cause analysis via causal graphs, and analytics. Single-page app using React 19 + Next.js 16 with Tailwind CSS, backed by real APIs.
 
 ## Architecture Overview
 
@@ -15,7 +15,7 @@ src/
     charts/         # Recharts wrapper components
   features/         # Feature modules (auth, search, analytics, settings, tickets, root-cause)
   types/           # Central TypeScript definitions (Ticket, User, GraphNode, etc.)
-  data/            # Mock data: MOCK_TICKETS, GRAPH_NODES, GRAPH_EDGES, GRAPH_CLUSTERS
+  data/            # Static helpers (no mock data)
   config/          # Branding, feature flags
   utils/           # Helpers (exportToCSV, formatDate, etc.)
   lib/             # Utilities (cn() from class-variance-authority)
@@ -33,10 +33,10 @@ src/
 **Why**: Simplifies prop drilling for cross-feature state like theme, user, and toast notifications. Extracted features (SearchPage, AnalyticsPage, etc.) are presentational and receive props/callbacks.
 
 ### Data Flow
-1. **Mock Data Source**: `src/data/mockTickets.ts` exports `MOCK_TICKETS`, `GRAPH_NODES`, `GRAPH_EDGES`, `GRAPH_CLUSTERS`
-2. **Search Flow**: SearchPage filters MOCK_TICKETS → renders results → clicks trigger `onSelectIncident` callback → detail panel updates in root state
-3. **Analytics**: AnalyticsPage reads mock metrics, renders Recharts components
-4. **Graph Simulation**: AnalyzePage in page.tsx runs custom force-directed layout on requestAnimationFrame (cluster gravity, node repulsion, link forces)
+1. **API Hooks**: React Query hooks in `src/services/api.ts` fetch tickets, analytics, and causal graphs.
+2. **Search Flow**: SearchPage uses `useTickets` or semantic search hooks → renders results → clicks trigger `onSelectIncident` callback → detail panel updates in root state.
+3. **Analytics**: AnalyticsPage reads API metrics, renders Recharts components.
+4. **Graph Simulation**: AnalyzePage uses API-sourced causal graphs with a custom force-directed layout.
 
 ### Extracted Features vs. Monolithic Page
 - **Extracted** (in `src/features/`): SearchPage, AnalyticsPage, SettingsPage, LoginPage, auth wrappers
@@ -64,7 +64,7 @@ npm start        # Start production server
 import { SearchPage } from '@/features/search';
 import { Button } from '@/components/ui/button';
 import type { Ticket } from '@/types';
-import { MOCK_TICKETS } from '@/data/mockTickets';
+import { useTickets } from '@/services';
 ```
 
 ## Styling & Component Library
@@ -93,16 +93,16 @@ Available Button variants: 'default' | 'destructive' | 'outline' | 'secondary' |
 ## Feature-Specific Patterns
 
 ### Search Feature (src/features/search/SearchPage.tsx)
-- **Typeahead**: Array of hardcoded suggestions (VPN, Printer, Outlook, etc.); filtered on substring match
-- **Categories**: Hardcoded array; toggle with `selectedCategories` state
-- **Pagination**: 5 items/page; currentPage and itemsPerPage state
-- **Filters**: Date range, ticket state, assignment group (no actual filtering logic, UI only)
+- **Typeahead**: Debounced suggestions from API or curated list
+- **Categories**: Filtered via API params
+- **Pagination**: API-backed paging
+- **Filters**: Date range, ticket state, assignment group
 - **Props**: `onSelectIncident`, `setIsMobileOpen`, `addToast`
 
 ### Analytics Feature (src/features/analytics/AnalyticsPage.tsx)
-- **Metrics Cards**: Hardcoded KPI data (1,284 tickets, 2.5h resolution time, 84% adoption)
+- **Metrics Cards**: API-sourced KPI data
 - **Charts**: Uses custom Recharts wrappers (SimpleLineChart, DonutChart, AreaChart) from `src/components/charts/`
-- **Export**: `exportToCSV()` helper; currently logs success toast
+- **Export**: `exportToCSV()` helper
 - **Props**: `addToast`
 
 ### Graph Visualization (src/app/page.tsx - AnalyzePage)
@@ -159,15 +159,12 @@ cd src/components/ui
 npx shadcn@latest add {component}
 ```
 
-### Integrate Real API
-1. Create `src/services/api.ts` with fetch functions
-2. Replace `MOCK_TICKETS` imports with API calls
-3. Add loading/error states
-4. Backend expected on port 8001 (per PRD)
+### API Integration
+API access lives in `src/services/api.ts` and `fetchAPI<T>()`. Backend expected on port 8001 (per PRD).
 
 ## Critical Files to Know
 - `src/app/page.tsx` - Root orchestrator; all state, AnalyzePage, IncidentDetailPanel
-- `src/data/mockTickets.ts` - All mock data (MOCK_TICKETS, GRAPH_*, clusters)
+- `src/services/api.ts` - React Query hooks and API wrapper
 - `src/types/index.ts` - Type definitions (Ticket, User, GraphNode, etc.)
 - `src/config/branding.ts` - Feature flags, branding constants
 - `src/components/layout/Sidebar.tsx` - Navigation sidebar with mobile support

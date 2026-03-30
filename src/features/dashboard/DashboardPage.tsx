@@ -1,29 +1,26 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Search, Clock, AlertCircle, CheckCircle2, Activity, ArrowUpRight, Ticket as TicketIcon } from 'lucide-react';
+import { useUIStore } from '@/stores/uiStore';
 import { useTickets, useAnalyticsMetrics } from '@/services';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import type { Ticket } from '@/types';
 
-interface DashboardPageProps {
-  setActivePage: (page: string) => void;
-  onSelectIncident: (incident: Ticket) => void;
-  addToast: (msg: string, type: 'success' | 'info' | 'error') => void;
-}
-
-export const DashboardPage = ({ setActivePage, onSelectIncident, addToast }: DashboardPageProps) => {
+export const DashboardPage = () => {
+  const router = useRouter();
+  const { setSelectedTicket, addToast } = useUIStore();
   const [quickSearch, setQuickSearch] = useState('');
 
   // API hooks for data
   const { data: ticketsData } = useTickets({ limit: 50 });
   const { data: metricsData } = useAnalyticsMetrics('30d');
 
-  const tickets = useMemo(() => ticketsData?.tickets ?? [], [ticketsData?.tickets]);
+  const tickets = ticketsData?.tickets ?? [];
 
   // Calculate KPIs from API data
-  const kpis = useMemo(() => {
+  const kpis = (() => {
     const total = metricsData?.totalTickets || ticketsData?.total || tickets.length;
     const openTickets = tickets.filter(t => t.state === 'New' || t.state === 'In Progress').length;
     const criticalTickets = tickets.filter(t => t.priority === 'Critical').length;
@@ -37,21 +34,17 @@ export const DashboardPage = ({ setActivePage, onSelectIncident, addToast }: Das
       openPercent: total > 0 ? Math.round((openTickets / total) * 100) : 0,
       criticalPercent: total > 0 ? Math.round((criticalTickets / total) * 100) : 0
     };
-  }, [tickets, ticketsData, metricsData]);
+  })();
 
   // Get recent tickets from API
-  const recentTickets = useMemo(() => {
-    return tickets.slice(0, 5);
-  }, [tickets]);
+  const recentTickets = tickets.slice(0, 5);
 
-  // Get high priority tickets from API
-  const urgentTickets = useMemo(() => {
-    return tickets.filter(t => t.priority === 'Critical' || t.priority === 'High').slice(0, 4);
-  }, [tickets]);
+  // Get problem tickets from API
+  const problemTickets = tickets.filter(t => t.ticket_type === 'problem').slice(0, 4);
 
   const handleQuickSearch = () => {
     if (quickSearch.trim()) {
-      setActivePage('search');
+      router.push(`/search?q=${encodeURIComponent(quickSearch.trim())}`);
       addToast(`Searching for: ${quickSearch}`, 'info');
     }
   };
@@ -88,7 +81,7 @@ export const DashboardPage = ({ setActivePage, onSelectIncident, addToast }: Das
             </Button>
             <Button 
               variant="outline" 
-              onClick={() => setActivePage('search')}
+              onClick={() => router.push('/search')}
             >
               Advanced Search
             </Button>
@@ -165,7 +158,7 @@ export const DashboardPage = ({ setActivePage, onSelectIncident, addToast }: Das
               <Button 
                 variant="ghost" 
                 size="sm"
-                onClick={() => setActivePage('search')}
+                onClick={() => router.push('/search')}
               >
                 View All
               </Button>
@@ -174,7 +167,7 @@ export const DashboardPage = ({ setActivePage, onSelectIncident, addToast }: Das
               {recentTickets.map((ticket) => (
                 <div
                   key={ticket.number}
-                  onClick={() => onSelectIncident(ticket)}
+                  onClick={() => setSelectedTicket(ticket)}
                   className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer transition-colors border border-slate-200 dark:border-slate-700"
                 >
                   <div className="flex items-start justify-between mb-2">
@@ -208,43 +201,54 @@ export const DashboardPage = ({ setActivePage, onSelectIncident, addToast }: Das
             </div>
           </div>
 
-          {/* Urgent Attention */}
+          {/* Problem Ticket Suggestion */}
           <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">Needs Attention</h2>
-              <Badge variant="destructive">{urgentTickets.length}</Badge>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">Problem Ticket Suggestion</h2>
+              <Badge className="bg-purple-600 text-white border-purple-600">{problemTickets.length}</Badge>
             </div>
             <div className="space-y-4">
-              {urgentTickets.map((ticket) => (
-                <div
-                  key={ticket.number}
-                  onClick={() => onSelectIncident(ticket)}
-                  className="p-4 bg-red-50 dark:bg-red-900/10 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/20 cursor-pointer transition-colors border border-red-200 dark:border-red-900/30"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <span className="font-mono text-sm font-semibold text-red-600 dark:text-red-400">
-                      {ticket.number}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="destructive">
-                        {ticket.priority}
-                      </Badge>
-                      {ticket.ticket_type === 'problem' && (
+              {problemTickets.length > 0 ? (
+                problemTickets.map((ticket) => (
+                  <div
+                    key={ticket.number}
+                    onClick={() => setSelectedTicket(ticket)}
+                    className="p-4 bg-purple-50 dark:bg-purple-900/10 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/20 cursor-pointer transition-colors border border-purple-200 dark:border-purple-900/30"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <span className="font-mono text-sm font-semibold text-purple-600 dark:text-purple-400">
+                        {ticket.number}
+                      </span>
+                      <div className="flex items-center gap-2">
                         <Badge className="bg-purple-600 text-white border-purple-600">
                           PROBLEM
                         </Badge>
-                      )}
+                        {ticket.priority && (
+                          <Badge variant={
+                            ticket.priority === 'Critical' ? 'destructive' :
+                            ticket.priority === 'High' ? 'default' : 'secondary'
+                          }>
+                            {ticket.priority}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-sm text-slate-900 dark:text-white mb-2 line-clamp-2">
+                      {ticket.short_description}
+                    </p>
+                    <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                      <Clock className="w-3 h-3" />
+                      <span>{ticket.category}</span>
+                      <span>•</span>
+                      <span>{ticket.state}</span>
                     </div>
                   </div>
-                  <p className="text-sm text-slate-900 dark:text-white mb-2 line-clamp-2">
-                    {ticket.short_description}
-                  </p>
-                  <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-                    <Clock className="w-3 h-3" />
-                    <span>{ticket.category}</span>
-                  </div>
+                ))
+              ) : (
+                <div className="p-4 text-center text-slate-500 dark:text-slate-400">
+                  <p>No problem tickets available</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>
@@ -257,7 +261,7 @@ export const DashboardPage = ({ setActivePage, onSelectIncident, addToast }: Das
               <p className="text-blue-100">Explore root cause relationships and ticket dependencies</p>
             </div>
             <Button
-              onClick={() => setActivePage('analyze')}
+              onClick={() => router.push('/root-cause')}
               variant="secondary"
               className="whitespace-nowrap"
             >

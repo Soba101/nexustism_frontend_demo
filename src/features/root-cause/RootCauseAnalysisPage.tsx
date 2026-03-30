@@ -1,21 +1,20 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { GraphNode, GraphEdge, Ticket } from '@/types';
-import { GRAPH_NODES as RAW_NODES, GRAPH_EDGES as MOCK_EDGES } from '@/data/mockTickets';
+import { useRouter } from 'next/navigation';
+import type { GraphNode, GraphEdge } from '@/types';
+import { useUIStore } from '@/stores/uiStore';
+import { useCausalGraph, useTicket } from '@/services';
 import { initializeNodes, downloadSVG } from './utils/graphHelpers';
 import { useGraphPhysics } from './hooks/useGraphPhysics';
 import { GraphControls } from './components/GraphControls';
 import { GraphCanvas } from './components/GraphCanvas';
 import { NodeDetailPanel } from './components/NodeDetailPanel';
-import { useCausalGraph } from '@/services';
 
-interface RootCauseAnalysisPageProps {
-  addToast: (msg: string, type: 'success' | 'info' | 'error') => void;
-  targetTicket?: Ticket | null;
-}
-
-export const RootCauseAnalysisPage = ({ addToast, targetTicket }: RootCauseAnalysisPageProps) => {
+export const RootCauseAnalysisPage = () => {
+  const router = useRouter();
+  const { addToast, selectedTicketForAnalysis: targetTicket } = useUIStore();
+  const fallbackTicketId = 'PRB000101';
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -31,53 +30,34 @@ export const RootCauseAnalysisPage = ({ addToast, targetTicket }: RootCauseAnaly
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<{ source: string; target: string } | null>(null);
-  const isProblemTarget = targetTicket?.ticket_type === 'problem';
-
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // API hooks for causal graph data
-  // TODO: Backend needs /api/causal-graph/{ticketId} endpoint - using mock data as fallback
-  const ticketId = targetTicket?.id || targetTicket?.number || '';
+  const ticketId = targetTicket?.number || targetTicket?.id || fallbackTicketId;
+  const { data: fallbackTicket } = useTicket(!targetTicket ? fallbackTicketId : '');
+  const activeTicket = targetTicket || fallbackTicket || null;
+  const isProblemTarget = activeTicket?.ticket_type === 'problem';
   const { data: graphData, isLoading: isGraphLoading } = useCausalGraph(ticketId);
 
-  // Use API data or fall back to mock data
   const graphNodes = useMemo(() => {
-    const nodesToUse = graphData?.nodes && graphData.nodes.length > 0
-      ? graphData.nodes
-      : targetTicket
-        ? RAW_NODES.map(node => {
-            if (node.type === 'root') {
-              return {
-                ...node,
-                label: targetTicket.number,
-                details: `Root Ticket: ${targetTicket.short_description}`
-              };
-            }
-            return node;
-          })
-        : RAW_NODES;
-
-    return nodesToUse.map(node => {
+    if (!graphData?.nodes || graphData.nodes.length === 0) return [];
+    return graphData.nodes.map((node) => {
       const detailsText = node.details?.trim() ? node.details : node.label;
-      if (targetTicket && node.type === 'root' && !isProblemTarget) {
-        const rootDetails = targetTicket.short_description || detailsText;
+      if (activeTicket && node.type === 'root' && !isProblemTarget) {
+        const rootDetails = activeTicket.short_description || detailsText;
         return {
           ...node,
-          label: targetTicket.number || node.label,
-          details: `Root Ticket: ${rootDetails}`
+          label: activeTicket.number || node.label,
+          details: `Root Ticket: ${rootDetails}`,
         };
       }
       return { ...node, details: detailsText };
     });
-  }, [graphData, targetTicket, isProblemTarget]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTicket?.id, activeTicket?.number, activeTicket?.short_description, graphData, isProblemTarget]);
 
-  const graphEdges: GraphEdge[] = useMemo(() => {
-    if (graphData?.edges && graphData.edges.length > 0) {
-      return graphData.edges;
-    }
-    return MOCK_EDGES;
-  }, [graphData]);
+  const graphEdges: GraphEdge[] = useMemo(() => graphData?.edges ?? [], [graphData]);
 
   // Initialize physics hook with dynamic edges
   const { nodesRef, startSimulation, stopSimulation } = useGraphPhysics({
@@ -160,6 +140,11 @@ export const RootCauseAnalysisPage = ({ addToast, targetTicket }: RootCauseAnaly
   useEffect(() => {
     // Don't initialize while loading API data
     if (isGraphLoading && ticketId) return;
+    if (graphNodes.length === 0) {
+      nodesRef.current = [];
+      setNodes([]);
+      return;
+    }
 
     const { width, height } = dimensions;
     const initialNodes = initializeNodes(graphNodes, width, height);
@@ -298,41 +283,43 @@ export const RootCauseAnalysisPage = ({ addToast, targetTicket }: RootCauseAnaly
     }
   };
 
+  const showEmptyGraph = !isGraphLoading && graphNodes.length === 0;
+
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-8 animate-in fade-in duration-500 h-[calc(100vh-4rem)] flex flex-col">
       {/* Target Ticket Header */}
-      {targetTicket && (
+      {activeTicket && (
         <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                {isProblemTarget ? 'Problem Investigation' : 'Root Cause Analysis'}: {targetTicket.number}
+                {isProblemTarget ? 'Problem Investigation' : 'Root Cause Analysis'}: {activeTicket.number}
               </h2>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                {targetTicket.short_description}
+                {activeTicket.short_description}
               </p>
               {isProblemTarget && (
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                  Linked incidents: {targetTicket.affected_ticket_ids?.length ?? 0}
+                  Linked incidents: {activeTicket.affected_ticket_ids?.length ?? 0}
                 </p>
               )}
             </div>
             <div className="flex items-center gap-2">
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                targetTicket.priority === 'Critical' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
-                targetTicket.priority === 'High' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' :
-                targetTicket.priority === 'Medium' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' :
+                activeTicket.priority === 'Critical' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                activeTicket.priority === 'High' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300' :
+                activeTicket.priority === 'Medium' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300' :
                 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300'
               }`}>
-                {targetTicket.priority}
+                {activeTicket.priority}
               </span>
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                targetTicket.state === 'New' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
-                targetTicket.state === 'In Progress' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' :
-                targetTicket.state === 'Resolved' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                activeTicket.state === 'New' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' :
+                activeTicket.state === 'In Progress' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' :
+                activeTicket.state === 'Resolved' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
                 'bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300'
               }`}>
-                {targetTicket.state}
+                {activeTicket.state}
               </span>
             </div>
           </div>
@@ -353,39 +340,67 @@ export const RootCauseAnalysisPage = ({ addToast, targetTicket }: RootCauseAnaly
       />
 
       <div ref={containerRef} className="flex-1 bg-slate-900 rounded-xl overflow-hidden shadow-2xl relative border border-slate-800 flex flex-col lg:flex-row min-h-[400px]">
-        <GraphCanvas
-          nodes={nodes}
-          edges={graphEdges}
-          zoom={zoom}
-          pan={pan}
-          dimensions={dimensions}
-          isPanning={isPanning}
-          interactionMode={interactionMode}
-          isCtrlPressed={isCtrlPressed}
-          searchQuery={searchQuery}
-          minConfidence={minConfidence}
-          selectedNodeId={selectedNode?.id || null}
-          draggedNodeId={draggedNodeId}
-          hoveredNodeId={hoveredNodeId}
-          selectedEdge={selectedEdge}
-          svgRef={svgRef}
-          onCanvasMouseDown={handleCanvasMouseDown}
-          onNodeMouseDown={handleMouseDown}
-          onNodeMouseEnter={setHoveredNodeId}
-          onNodeMouseLeave={() => setHoveredNodeId(null)}
-          onEdgeClick={setSelectedEdge}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-        />
+        {showEmptyGraph && !activeTicket ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-4">
+            <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center">
+              <svg className="w-8 h-8 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-medium text-slate-200">No Causal Graph Available</h3>
+              <p className="text-sm text-slate-400 max-w-md">
+                Select a ticket from the Search page to explore its causal relationships and root cause connections.
+              </p>
+            </div>
+            <p className="text-xs text-slate-500 mt-2">
+              The causal graph shows how incidents relate to each other, helping identify root causes and patterns.
+            </p>
+            <button
+              onClick={() => router.push('/search')}
+              className="mt-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              Go to Search
+            </button>
+          </div>
+        ) : (
+          <>
+            <GraphCanvas
+              nodes={nodes}
+              edges={graphEdges}
+              zoom={zoom}
+              pan={pan}
+              dimensions={dimensions}
+              isPanning={isPanning}
+              interactionMode={interactionMode}
+              isCtrlPressed={isCtrlPressed}
+              searchQuery={searchQuery}
+              minConfidence={minConfidence}
+              selectedNodeId={selectedNode?.id || null}
+              draggedNodeId={draggedNodeId}
+              hoveredNodeId={hoveredNodeId}
+              selectedEdge={selectedEdge}
+              svgRef={svgRef}
+              onCanvasMouseDown={handleCanvasMouseDown}
+              onNodeMouseDown={handleMouseDown}
+              onNodeMouseEnter={setHoveredNodeId}
+              onNodeMouseLeave={() => setHoveredNodeId(null)}
+              onEdgeClick={setSelectedEdge}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+            />
 
-        <NodeDetailPanel
-          node={selectedNode}
-          validation={validation}
-          onValidationChange={setValidation}
-          onSubmitValidation={handleSubmitValidation}
-          onFlagIncorrect={handleFlagIncorrect}
-          onClose={() => setSelectedNode(null)}
-        />
+            <NodeDetailPanel
+              node={selectedNode}
+              validation={validation}
+              onValidationChange={setValidation}
+              onSubmitValidation={handleSubmitValidation}
+              onFlagIncorrect={handleFlagIncorrect}
+              onClose={() => setSelectedNode(null)}
+            />
+          </>
+        )}
       </div>
     </div>
   );

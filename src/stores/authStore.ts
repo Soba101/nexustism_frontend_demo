@@ -1,14 +1,7 @@
+import React from 'react';
 import { create } from 'zustand';
 import type { User } from '@/types';
-
-const IS_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true';
-
-const DEMO_USER: User = {
-  name: 'Demo User',
-  email: 'demo@nexustism.ai',
-  role: 'Support Analyst',
-  avatar: 'DU',
-};
+import { FORCED_DATASET_MODE, IS_STANDALONE_DEMO } from '@/lib/demoMode';
 
 export interface AuthUser {
   id: string;
@@ -19,6 +12,8 @@ export interface AuthUser {
     full_name?: string;
     avatar_url?: string;
     role?: string;
+    team?: string;
+    dataset_mode?: string;
   };
 }
 
@@ -45,6 +40,36 @@ export interface AuthStore {
 }
 
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const DEMO_SESSION_KEY = 'itsm-demo-authenticated';
+const DEMO_USER: User = {
+  name: 'Admin User',
+  email: 'admin@admin.com',
+  role: 'Demo Administrator',
+  avatar: 'AU',
+};
+
+const normalizeDatasetValue = (value?: string | null): 'demo' | 'prod' | null => {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'demo' || normalized === 'prod') {
+    return normalized;
+  }
+  return null;
+};
+
+const resolveDatasetMode = (authUser: AuthUser): 'demo' | 'prod' => {
+  const forcedMode = normalizeDatasetValue(FORCED_DATASET_MODE);
+  if (forcedMode) return forcedMode;
+
+  const metadataMode = normalizeDatasetValue(authUser.user_metadata?.dataset_mode);
+  if (metadataMode) return metadataMode;
+
+  const roleMode = normalizeDatasetValue(authUser.user_metadata?.role);
+  if (roleMode) return roleMode;
+
+  const email = authUser.email?.trim().toLowerCase() ?? '';
+  return email.startsWith('demo@') ? 'demo' : 'prod';
+};
 
 /**
  * Convert Supabase AuthUser to app User type
@@ -53,21 +78,25 @@ const convertAuthUserToUser = (authUser: AuthUser): User => {
   const firstName = authUser.user_metadata?.first_name || authUser.user_metadata?.full_name?.split(' ')[0] || 'User';
   const lastName = authUser.user_metadata?.last_name || authUser.user_metadata?.full_name?.split(' ')[1] || '';
   const fullName = authUser.user_metadata?.full_name || `${firstName} ${lastName}`.trim();
+  const datasetMode = resolveDatasetMode(authUser);
+  const displayRole =
+    authUser.user_metadata?.team ||
+    (datasetMode === 'demo' ? 'Demo User' : 'Support Analyst');
 
   return {
     name: fullName,
     email: authUser.email || '',
-    role: authUser.user_metadata?.role || 'Support Analyst',
+    role: displayRole,
     avatar: (firstName + (lastName ? lastName[0] : '')).toUpperCase(),
   };
 };
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
-  user: IS_MOCK ? DEMO_USER : null,
-  isLoading: IS_MOCK ? false : true,
+  user: null,
+  isLoading: IS_STANDALONE_DEMO,
   error: null,
   sessionTimeout: null,
-  datasetMode: IS_MOCK ? 'demo' : 'prod',
+  datasetMode: 'demo',
 
   setUser: (user) => set({ user }),
   setIsLoading: (isLoading) => set({ isLoading }),
@@ -76,10 +105,25 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   setDatasetMode: (mode) => set({ datasetMode: mode }),
 
   login: async (email: string, password: string) => {
-    if (IS_MOCK) {
-      set({ user: DEMO_USER, isLoading: false, error: null, datasetMode: 'demo' });
+    if (IS_STANDALONE_DEMO) {
+      set({ isLoading: true, error: null });
+
+      const normalizedEmail = email.trim().toLowerCase();
+      const normalizedPassword = password.trim();
+      if (normalizedEmail !== 'admin@admin.com' || normalizedPassword !== 'password') {
+        const message = 'Use admin@admin.com / password for the demo.';
+        set({ isLoading: false, error: message, user: null, datasetMode: 'demo' });
+        throw new Error(message);
+      }
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(DEMO_SESSION_KEY, 'true');
+      }
+
+      set({ user: DEMO_USER, datasetMode: 'demo', isLoading: false, error: null });
       return;
     }
+
     try {
       set({ isLoading: true, error: null });
       const { signIn } = await import('@/lib/supabase');
@@ -91,8 +135,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           email: authUser.email,
           user_metadata: authUser.user_metadata,
         };
-        const role = authUser.user_metadata?.role || 'prod';
-        const datasetMode: 'demo' | 'prod' = role === 'demo' ? 'demo' : 'prod';
+        const datasetMode = resolveDatasetMode(user);
 
         set({
           user: convertAuthUserToUser(user),
@@ -110,10 +153,15 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   logout: async () => {
-    if (IS_MOCK) {
+    if (IS_STANDALONE_DEMO) {
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(DEMO_SESSION_KEY);
+      }
       set({ user: null, error: null, datasetMode: 'demo', isLoading: false });
+      get().clearSessionTimeout();
       return;
     }
+
     try {
       set({ isLoading: true });
       const { signOut } = await import('@/lib/supabase');
@@ -130,13 +178,21 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   restoreSession: async () => {
-    if (IS_MOCK) {
-      set({ user: DEMO_USER, isLoading: false, datasetMode: 'demo' });
+    if (IS_STANDALONE_DEMO) {
+      const isAuthenticated =
+        typeof window !== 'undefined' && window.localStorage.getItem(DEMO_SESSION_KEY) === 'true';
+      set({
+        user: isAuthenticated ? DEMO_USER : null,
+        datasetMode: 'demo',
+        isLoading: false,
+        error: null,
+      });
       return;
     }
+
     try {
       set({ isLoading: true });
-      const { getCurrentUser, signOut } = await import('@/lib/supabase');
+      const { getCurrentUser } = await import('@/lib/supabase');
       const authUser = await getCurrentUser();
 
       if (authUser) {
@@ -145,8 +201,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           email: authUser.email,
           user_metadata: authUser.user_metadata,
         };
-        const role = authUser.user_metadata?.role || 'prod';
-        const datasetMode: 'demo' | 'prod' = role === 'demo' ? 'demo' : 'prod';
+        const datasetMode = resolveDatasetMode(user);
 
         set({
           user: convertAuthUserToUser(user),
@@ -172,7 +227,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   setupSessionTimeout: () => {
-    if (IS_MOCK) return;
     get().clearSessionTimeout();
 
     const timeout = setTimeout(() => {
@@ -195,14 +249,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 /**
  * Hook to initialize auth state from Supabase
  */
-import React from 'react';
-
 export const useInitializeAuth = () => {
   const { restoreSession } = useAuthStore();
 
   React.useEffect(() => {
-    if (IS_MOCK) {
-      // Already initialized with demo user in store creation
+    if (IS_STANDALONE_DEMO) {
+      restoreSession();
       return;
     }
 
@@ -218,8 +270,7 @@ export const useInitializeAuth = () => {
             email: authUser.email,
             user_metadata: authUser.user_metadata,
           };
-          const role = authUser.user_metadata?.role || 'prod';
-          const datasetMode: 'demo' | 'prod' = role === 'demo' ? 'demo' : 'prod';
+          const datasetMode = resolveDatasetMode(user);
 
           useAuthStore.setState({
             user: convertAuthUserToUser(user),
